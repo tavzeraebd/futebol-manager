@@ -12,6 +12,7 @@
   /* ---------- utilidades ---------- */
   const money = e => e >= 1e6 ? '€ ' + (e / 1e6).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + ' M' : '€ ' + Math.round(e / 1e3) + ' mil';
   const norm = t => String(t).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+  const avatar = p => '<span class="avatar">' + (p.photo ? '<img src="' + esc(p.photo) + '" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">' : '') + '<i>' + esc((p.name || '?').trim().charAt(0).toUpperCase()) + '</i></span>';
   const price = p => Math.round(p.value * S.meta.buyPremium);
   const lsGet = k => { try { return localStorage.getItem(k); } catch (_) { return null; } };
   const lsSet = (k, v) => { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch (_) { /* ignora */ } };
@@ -345,12 +346,12 @@
     searchTimer = setTimeout(() => remoteSearch(q), 600);
   });
 
-  /** Busca o nome no Sofascore (via servidor) e junta os jogadores encontrados ao catálogo. */
+  /** Busca o nome em bases abertas de jogadores (via servidor) e junta os encontrados ao catálogo. */
   async function remoteSearch(q) {
     const seq = ++searchSeq;
     const st = $('mkStatus');
     st.hidden = false;
-    st.textContent = 'Buscando "' + q + '" no Sofascore…';
+    st.textContent = 'Buscando "' + q + '" entre milhares de jogadores…';
     try {
       const r = await api('GET', '/api/search?q=' + encodeURIComponent(q));
       if (seq !== searchSeq) return;
@@ -358,10 +359,10 @@
         const i = S.catalog.players.findIndex(x => x.id === p.id);
         if (i >= 0) S.catalog.players[i] = p; else S.catalog.players.push(p);
       }
-      const n = r.players.filter(p => p.source === 'sofascore').length;
+      const n = r.players.filter(p => p.source && p.source !== 'seed').length;
       st.textContent = r.remote.ok
-        ? n + ' jogador(es) do Sofascore para "' + q + '".'
-        : 'Sofascore indisponível (' + r.remote.error + '). Mostrando só o catálogo local — veja o README para liberar o acesso.';
+        ? n + ' jogador(es) encontrados na base ' + (r.remote.source || 'online') + ' para "' + q + '".'
+        : 'Busca online indisponível (' + r.remote.error + '). Mostrando só o catálogo local.';
       renderMarket();
     } catch (e) {
       if (seq === searchSeq) st.textContent = e.message;
@@ -402,7 +403,7 @@
       else act = '<button class="btn primary sm" data-buy="' + esc(p.id) + '"' + (price(p) > S.me.budget ? ' disabled' : '') + ' type="button">Contratar</button> <button class="btn sm" data-auc="' + esc(p.id) + '" type="button">Leilão</button>';
       return S.kind === 'coach'
         ? '<tr><td>' + esc(p.name) + '</td><td>' + esc(p.club) + '</td><td class="num ovr">' + p.ovr + '</td><td class="num">' + money(price(p)) + '</td><td>' + act + '</td></tr>'
-        : '<tr><td><span class="pos ' + p.role + '">' + p.pos + '</span></td><td><a href="#" class="plink" data-info="' + esc(p.id) + '">' + esc(p.name) + '</a>' + (p.source === 'sofascore' ? ' <span class="tag">SS</span>' : '') + '</td><td>' + esc(p.club) + '</td><td class="num ovr">' + p.ovr + '</td><td class="num">' + (p.valueEstimated ? '~' : '') + money(p.value) + '</td><td class="num"><b>' + money(price(p)) + '</b></td><td>' + act + '</td></tr>' +
+        : '<tr><td><span class="pos ' + p.role + '">' + p.pos + '</span></td><td>' + avatar(p) + '<a href="#" class="plink" data-info="' + esc(p.id) + '">' + esc(p.name) + '</a>' + (p.source === 'sofascore' ? ' <span class="tag">SS</span>' : p.source === 'wikidata' ? ' <span class="tag">WD</span>' : '') + '</td><td>' + esc(p.club) + '</td><td class="num ovr">' + p.ovr + '</td><td class="num">' + (p.valueEstimated ? '~' : '') + money(p.value) + '</td><td class="num"><b>' + money(price(p)) + '</b></td><td>' + act + '</td></tr>' +
           (S.open === p.id ? '<tr class="detail"><td colspan="7">' + details(p) + '</td></tr>' : '');
     }).join('') || '<tr><td>Nada encontrado.</td></tr>';
     $('mkMore').hidden = total <= S.shown;
@@ -412,8 +413,8 @@
     const labels = { attacking: 'Ataque', technical: 'Técnica', tactical: 'Tática', defending: 'Defesa', creativity: 'Criatividade' };
     const attrs = p.attrs
       ? Object.keys(labels).map(k => '<div class="attr"><span>' + labels[k] + '</span><div class="abar"><i style="width:' + Math.min(100, p.attrs[k] || 0) + '%"></i></div><b>' + (p.attrs[k] != null ? p.attrs[k] : '—') + '</b></div>').join('')
-      : '<span class="muted">Sem atributos detalhados (jogador do catálogo local): a nota geral ' + p.ovr + ' define as habilidades em campo.</span>';
-    return '<div class="muted">' + esc(bits.join(' · ') || 'Sem dados pessoais') + (p.valueEstimated ? ' · valor estimado pela nota (Sofascore não informou)' : '') + '</div><div class="attrs">' + attrs + '</div>';
+      : '<span class="muted">Sem atributos detalhados: a nota geral ' + p.ovr + ' define as habilidades em campo.</span>';
+    return '<div class="muted">' + esc(bits.join(' · ') || 'Sem dados pessoais') + (p.valueEstimated ? ' · nota e valor estimados pela fama do jogador' : '') + (p.retired ? ' · sem clube / aposentado' : '') + '</div><div class="attrs">' + attrs + '</div>';
   }
   $('mkTable').onclick = async e => {
     const info = e.target.closest('[data-info]');
@@ -437,7 +438,7 @@
     const sq = S.me.squad.map(player).filter(Boolean).sort((a, b) => ['GK', 'DEF', 'MID', 'FWD'].indexOf(a.role) - ['GK', 'DEF', 'MID', 'FWD'].indexOf(b.role) || b.ovr - a.ovr);
     $('sqInfo').textContent = sq.length + ' jogadores · valor do elenco ' + money(sq.reduce((s, p) => s + p.value, 0)) + ' · compra com ágio de ' + Math.round((S.meta.buyPremium - 1) * 100) + '%, venda por ' + Math.round(S.meta.sellRatio * 100) + '% do valor de mercado.';
     $('sqTable').innerHTML = '<tr><th>Pos</th><th>Jogador</th><th>Clube de origem</th><th class="num">Nota</th><th class="num">Valor</th><th class="num">Venda</th><th></th></tr>' +
-      (sq.map(p => '<tr><td><span class="pos ' + p.role + '">' + p.pos + '</span></td><td>' + esc(p.name) + '</td><td>' + esc(p.club) + '</td><td class="num ovr">' + p.ovr + '</td><td class="num">' + money(p.value) + '</td><td class="num">' + money(p.value * S.meta.sellRatio) + '</td><td><button class="btn danger sm" data-sell="' + esc(p.id) + '" type="button">Vender</button> <button class="btn sm" data-auc="' + esc(p.id) + '" type="button">Leiloar</button></td></tr>').join('') ||
+      (sq.map(p => '<tr><td><span class="pos ' + p.role + '">' + p.pos + '</span></td><td>' + avatar(p) + esc(p.name) + '</td><td>' + esc(p.club) + '</td><td class="num ovr">' + p.ovr + '</td><td class="num">' + money(p.value) + '</td><td class="num">' + money(p.value * S.meta.sellRatio) + '</td><td><button class="btn danger sm" data-sell="' + esc(p.id) + '" type="button">Vender</button> <button class="btn sm" data-auc="' + esc(p.id) + '" type="button">Leiloar</button></td></tr>').join('') ||
         '<tr><td colspan="7">Seu elenco está vazio. Vá ao Mercado e contrate jogadores.</td></tr>');
     const c = S.me.coach && coach(S.me.coach);
     $('sqCoach').innerHTML = c

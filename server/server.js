@@ -7,6 +7,7 @@ const { load } = require('./catalog');
 const { createStore } = require('./store');
 const R = require('./rules');
 const ss = require('./providers/sofascore');
+const wd = require('./providers/wikidata');
 const LG = require('./leagues');
 const CH = require('./chat');
 const { createExchange } = require('./exchange');
@@ -669,30 +670,37 @@ route('POST', '/api/leagues/simulate', (req, url, body) => {
   return { match: rec.id, score: rec.score, pens: rec.pens };
 });
 
-/* ---------- busca ao vivo no Sofascore ---------- */
+/* ---------- busca de jogadores (Wikidata por padrão; Sofascore se SOFASCORE_BASE estiver configurado) ---------- */
 const norm = s => String(s).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 const searchCache = new Map(); // termo -> { at, remote }
 const SEARCH_TTL = 10 * 60 * 1000;
 const MAX_IMPORT = 12;
+const SOURCE = process.env.SOFASCORE_BASE ? 'Sofascore' : 'Wikidata';
+
+async function findPlayers(q) {
+  if (SOURCE === 'Wikidata') return wd.searchPlayers(q);
+  const found = (await ss.searchPlayers(q)).slice(0, MAX_IMPORT);
+  const out = [];
+  let cursor = 0;
+  const worker = async () => {
+    while (cursor < found.length) {
+      const e = found[cursor++];
+      try { out.push(await ss.playerFull(e.id)); } catch (_) { /* pula o jogador com erro */ }
+    }
+  };
+  await Promise.all([worker(), worker(), worker()]);
+  return out;
+}
 
 async function remoteSearch(q) {
   const hit = searchCache.get(q);
   if (hit && Date.now() - hit.at < SEARCH_TTL) return hit.remote;
   let remote;
   try {
-    const found = (await ss.searchPlayers(q)).slice(0, MAX_IMPORT);
-    const imported = [];
-    let cursor = 0;
-    const worker = async () => {
-      while (cursor < found.length) {
-        const e = found[cursor++];
-        try { imported.push(catalog.add(await ss.playerFull(e.id))); } catch (_) { /* pula o jogador com erro */ }
-      }
-    };
-    await Promise.all([worker(), worker(), worker()]);
-    remote = { ok: true, ids: imported.map(p => p.id) };
+    const imported = (await findPlayers(q)).map(p => catalog.add(p)); // guarda no catálogo (e no Supabase) para todos os clubes
+    remote = { ok: true, ids: imported.map(p => p.id), source: SOURCE };
   } catch (e) {
-    remote = { ok: false, error: e.message, status: e.status || 0 };
+    remote = { ok: false, error: e.message, status: e.status || 0, source: SOURCE };
   }
   // falhas só ficam em cache por pouco tempo, para tentar de novo logo
   searchCache.set(q, { at: remote.ok ? Date.now() : Date.now() - SEARCH_TTL + 30000, remote });
@@ -710,7 +718,7 @@ route('GET', '/api/search', async (req, url) => {
   const players = catalog.players
     .filter(p => ids.has(p.id) || norm(p.name + ' ' + p.club).includes(nq))
     .map(p => Object.assign({}, p, { owner: own(p.id) }));
-  return { players, remote: { ok: remote.ok, error: remote.error, status: remote.status } };
+  return { players, remote: { ok: remote.ok, error: remote.error, status: remote.status, source: remote.source } };
 });
 
 /* ---------- HTTP ---------- */

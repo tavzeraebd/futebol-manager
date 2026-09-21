@@ -75,16 +75,20 @@ Tudo o que precisa persistir (clubes, elencos, partidas, ligas/copas, trocas, jo
 
 ## Dados
 - Padrão: `server/seed.js` (elencos reais, valores/notas aproximados escritos à mão).
-- Sofascore: `npm run sync -- "Clube=ID" ...` grava `data/catalog.sofascore.json`, que passa a ser usado.
+- Sofascore (opcional): `npm run sync -- "Clube=ID" ...` grava `data/catalog.sofascore.json`, que passa a ser usado.
   A API deles retorna 403 para acesso automatizado; o adaptador não contorna isso. Só funciona com acesso permitido
   (SOFASCORE_BASE / SOFASCORE_HEADERS). Confira os termos de uso do Sofascore.
 
-## Busca ao vivo (Sofascore)
-No Mercado, digitar 3+ letras (ex.: "Igor") consulta `/search/players` no Sofascore, importa até 12 jogadores com
-atributos (`attribute-overviews`), idade, altura, pé e valor, e guarda na tabela `imported_players` do Supabase.
-Os atributos viram habilidades em campo (ataque->chute, técnica->drible, criatividade+técnica->passe, defesa->desarme).
-Se o Sofascore bloquear (HTTP 403), a tela avisa e a busca usa só o catálogo local.
-Para liberar: SOFASCORE_BASE (proxy/licença próprios) e SOFASCORE_HEADERS (JSON) antes de `node server/server.js`.
+## Busca de jogadores (milhares, com foto)
+No Mercado, digitar 3+ letras (ex.: "Igor", "Vinicius", "Yamal") busca o nome no **Wikidata** (dados abertos, sem chave):
+qualquer jogador de futebol do mundo, nacional ou internacional. Vêm foto (Wikimedia Commons), posição, clube atual,
+nacionalidade, idade e altura. Os até 15 mais famosos de cada busca são guardados na tabela `imported_players` do Supabase
+e passam a aparecer no mercado de todos os clubes.
+- O Wikidata não tem valor de mercado nem atributos: a **nota** é estimada pela fama do jogador (edições da Wikipédia sobre
+  ele) e o **valor** pela nota (mesma curva do catálogo). Fica marcado como estimado (tag "WD"). Sem clube = "Sem clube".
+- Fotos: o navegador carrega direto do Wikimedia Commons; sem foto, aparece a inicial do nome.
+- Sofascore: a API deles retorna 403 para servidores e o adaptador não contorna isso. Só é usado se você definir
+  SOFASCORE_BASE (proxy/licença próprios) e SOFASCORE_HEADERS (JSON); aí ele substitui o Wikidata.
 
 ## Estrutura
 server/ (API, regras, catálogo) · js/engine.js (partida) · js/render.js (campo) · js/game.js (cliente) · game.html

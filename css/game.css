@@ -203,3 +203,8 @@ label { display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
 .pad-dirs [data-d=up] { grid-area: up; } .pad-dirs [data-d=left] { grid-area: left; } .pad-dirs [data-d=down] { grid-area: down; } .pad-dirs [data-d=right] { grid-area: right; }
 .pad-acts { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
 .pad[hidden], .play-help[hidden] { display: none; }
+
+/* foto do jogador (miniatura; a inicial aparece se não houver foto) */
+.avatar { position: relative; display: inline-block; width: 28px; height: 28px; border-radius: 50%; overflow: hidden; vertical-align: middle; margin-right: 8px; background: var(--line); }
+.avatar i { position: absolute; inset: 0; display: grid; place-items: center; font-style: normal; font-size: 12px; font-weight: 700; color: var(--muted); }
+.avatar img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center top; }
