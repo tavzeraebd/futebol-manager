@@ -3,6 +3,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const zlib = require('zlib');
 const { load } = require('./catalog');
 const { createStore } = require('./store');
 const R = require('./rules');
@@ -765,8 +766,14 @@ const server = http.createServer((req, res) => {
     const headers = { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' };
     if (obj && obj.token) headers['Set-Cookie'] = 'fm_session=' + obj.token + '; Path=/; Max-Age=31536000; HttpOnly; SameSite=Lax';
     if (obj && obj.clearCookie) headers['Set-Cookie'] = 'fm_session=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax';
+    const body = JSON.stringify(obj);
+    if (body.length > 1024 && /gzip/.test(req.headers['accept-encoding'] || '')) { // o catálogo tem milhares de jogadores
+      headers['Content-Encoding'] = 'gzip'; headers.Vary = 'Accept-Encoding';
+      res.writeHead(code, headers);
+      return res.end(zlib.gzipSync(body));
+    }
     res.writeHead(code, headers);
-    res.end(JSON.stringify(obj));
+    res.end(body);
   };
   if (!fn) return send(404, { error: 'Rota não encontrada.' });
 
@@ -789,6 +796,15 @@ async function boot() {
   store.attach(db);
   catalog = load({ imported: await store.loadImported(), persist: p => store.saveImported(p) });
   XC = createExchange({ db, catalog, R, save, push, pushAll });
+  // jogadores importados por outros meios (ex.: carga em massa) entram no catálogo sem reiniciar
+  let since = new Date().toISOString();
+  setInterval(async () => {
+    try {
+      const from = since; since = new Date().toISOString();
+      const n = catalog.merge(await store.loadImported(from));
+      if (n) { console.log('[catálogo] +' + n + ' jogadores importados'); pushAll('market', {}); }
+    } catch (e) { console.error('[catálogo] falha ao atualizar:', e.message); }
+  }, 5 * 60 * 1000).unref();
   server.listen(PORT, () => console.log('Jogo em http://localhost:' + PORT + '  (banco: Supabase, catálogo: ' + catalog.source + ', ' + catalog.players.length + ' jogadores)'));
 }
 boot().catch(e => { console.error('Falha ao iniciar:', e.message); process.exit(1); });

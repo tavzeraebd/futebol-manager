@@ -112,18 +112,19 @@ function sparqlFor(ids) {
 }`;
 }
 
-/** Busca por nome e devolve até KEEP jogadores completos (os mais famosos primeiro). */
-async function searchPlayers(q) {
-  const s = await getJson(API + '?' + new URLSearchParams({
-    action: 'query', list: 'search', srsearch: q + ' haswbstatement:P106=Q937857', srlimit: String(CANDIDATES), srnamespace: '0', format: 'json'
-  }));
-  const ids = ((s.query && s.query.search) || []).map(x => x.title).filter(t => /^Q\d+$/.test(t));
+/** Consulta SPARQL genérica (devolve as linhas de resultado). */
+async function sparql(query) {
+  const d = await getJson(SPARQL + '?' + new URLSearchParams({ query, format: 'json' }), { headers: { 'User-Agent': UA, Accept: 'application/sparql-results+json' } });
+  return d.results.bindings;
+}
+
+/** Jogadores completos a partir dos IDs do Wikidata, do mais famoso para o menos famoso. */
+async function loadPlayers(ids) {
   if (!ids.length) return [];
-  const d = await getJson(SPARQL + '?' + new URLSearchParams({ query: sparqlFor(ids), format: 'json' }), { headers: { 'User-Agent': UA, Accept: 'application/sparql-results+json' } });
   const byId = new Map();
-  for (const r of d.results.bindings) {
+  for (const r of await sparql(sparqlFor(ids))) {
     const id = qid(r.p.value);
-    if (r.clubName) r.clubName.value = r.clubName.value.replace(/\s+$/, '');
+    if (r.clubName) r.clubName.value = r.clubName.value.trim();
     (byId.get(id) || byId.set(id, []).get(id)).push(r);
   }
   const players = [];
@@ -131,7 +132,16 @@ async function searchPlayers(q) {
     const p = buildPlayer(id, rows);
     if (p) players.push({ p, sl: +rows[0].sl.value });
   }
-  return players.sort((a, b) => b.sl - a.sl).slice(0, KEEP).map(x => x.p);
+  return players.sort((a, b) => b.sl - a.sl).map(x => x.p);
 }
 
-module.exports = { searchPlayers, WikidataError, ovrFromFame, valueFromOvr, posFromLabel };
+/** Busca por nome e devolve até KEEP jogadores completos (os mais famosos primeiro). */
+async function searchPlayers(q) {
+  const s = await getJson(API + '?' + new URLSearchParams({
+    action: 'query', list: 'search', srsearch: q + ' haswbstatement:P106=Q937857', srlimit: String(CANDIDATES), srnamespace: '0', format: 'json'
+  }));
+  const ids = ((s.query && s.query.search) || []).map(x => x.title).filter(t => /^Q[0-9]+$/.test(t));
+  return (await loadPlayers(ids)).slice(0, KEEP);
+}
+
+module.exports = { searchPlayers, loadPlayers, sparql, qid, WikidataError, ovrFromFame, valueFromOvr, posFromLabel };

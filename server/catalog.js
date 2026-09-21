@@ -21,6 +21,15 @@ function load({ imported = [], persist = () => {} } = {}) {
   const cat = {
     source, players, coaches, imported,
     playerById: new Map(), coachById: new Map(coaches.map(x => [x.id, x])),
+    /** Junta jogadores vindos do banco (sem gravar de novo). Devolve quantos eram novos. */
+    merge(list) {
+      let n = 0;
+      for (const p of list) {
+        const old = this.playerById.get(p.id);
+        if (old) Object.assign(old, p); else { this.players.push(p); this.playerById.set(p.id, p); n++; }
+      }
+      return n;
+    },
     add(p) {
       const old = this.playerById.get(p.id);
       if (old) { Object.assign(old, p); } else { this.players.push(p); this.playerById.set(p.id, p); }

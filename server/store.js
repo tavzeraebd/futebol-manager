@@ -189,7 +189,8 @@ function createStore() {
   }
 
   /* ---------- jogadores importados (busca ao vivo) ---------- */
-  async function loadImported() { return (await all('imported_players', q => q.order('name'))).map(r => r.data); }
+  /** `since` (ISO): só os gravados depois disso. */
+  async function loadImported(since) { return (await all('imported_players', q => (since ? q.gt('updated_at', since).order('updated_at') : q.order('name')))).map(r => r.data); }
   function saveImported(p) {
     sb.from('imported_players').upsert({ id: p.id, name: p.name, club: p.club || null, data: p, updated_at: new Date().toISOString() })
       .then(r => { if (r.error) console.error('[supabase] imported_players:', r.error.message); });

@@ -86,6 +86,10 @@ nacionalidade, idade e altura. Os até 15 mais famosos de cada busca são guarda
 e passam a aparecer no mercado de todos os clubes.
 - O Wikidata não tem valor de mercado nem atributos: a **nota** é estimada pela fama do jogador (edições da Wikipédia sobre
   ele) e o **valor** pela nota (mesma curva do catálogo). Fica marcado como estimado (tag "WD"). Sem clube = "Sem clube".
+- Carga em massa: `node scripts/load-players.js` baixa do Wikidata os jogadores em atividade das principais ligas (Premier League,
+  La Liga, Serie A, Bundesliga, Ligue 1, Brasileirão A e B, Primeira Liga, Eredivisie, Argentina, MLS, Arábia Saudita, Turquia, Escócia,
+  Bélgica, México, Uruguai) e das 47 principais seleções, e grava em `imported_players` (~8 mil jogadores, alguns minutos; pode ser
+  interrompido e retomado; `--refresh` atualiza os já guardados). O servidor em execução incorpora os novos a cada 5 minutos.
 - Fotos: o navegador carrega direto do Wikimedia Commons; sem foto, aparece a inicial do nome.
 - Sofascore: a API deles retorna 403 para servidores e o adaptador não contorna isso. Só é usado se você definir
   SOFASCORE_BASE (proxy/licença próprios) e SOFASCORE_HEADERS (JSON); aí ele substitui o Wikidata.
