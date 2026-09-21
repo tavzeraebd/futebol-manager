@@ -72,6 +72,7 @@
             <button data-tab="lineup" type="button">Escalação</button>
             <button data-tab="clubs" type="button">Clubes</button>
             <button data-tab="leagues" type="button">Ligas</button>
+            <button data-tab="stats" type="button">Estatísticas</button>
             <button data-tab="exch" type="button">Leilão e trocas</button>
             <button data-tab="matches" type="button">Partidas</button>
           </nav>
@@ -159,6 +160,12 @@
           </form>
           <p class="muted">A troca ou mudança acontece na primeira bola parada depois do minuto combinado (o intervalo também vale). Até 5 trocas e 3 mudanças de tática.</p>
         </div>
+      </section>
+
+      <section id="tab-stats" class="card" hidden>
+        <h2>Estatísticas</h2>
+        <p class="muted">Artilharia e assistências de todos os jogadores, com o clube de cada um. Contam só as partidas entre jogadores (contra a CPU é teste). Toque em um jogador para ver a ficha ou em um clube para ver o elenco.</p>
+        <div class="stat-grid" id="stBoards"><p class="muted">Carregando…</p></div>
       </section>
 
       <section id="tab-clubs" class="card" hidden>

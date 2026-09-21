@@ -96,7 +96,7 @@ function recordResult(league, fixtureId, res) {
   f.matchId = res.matchId;
   f.score = res.score;
   f.pens = res.pens || null;
-  f.goals = (res.goals || []).map(g => ({ player: g.player, clubId: g.side === 'home' ? f.home : f.away, og: !!g.og }));
+  f.goals = (res.goals || []).map(g => ({ player: g.player, clubId: g.side === 'home' ? f.home : f.away, og: !!g.og, assist: g.assist || null }));
   f.winner = winnerOf(f);
   if (league.format === 'cup' && !f.winner) f.winner = f.home; // segurança: mata-mata sempre tem vencedor
   return advance(league);
@@ -157,4 +157,15 @@ function scorers(league) {
   return [...map.values()].sort((a, b) => b.goals - a.goals || a.player.localeCompare(b.player)).slice(0, 15);
 }
 
-module.exports = { CODE_CHARS, LIMITS, LEAGUE_PRIZE, newCode, roundRobin, start, recordResult, standings, scorers, winnerOf, cupStage };
+/** Assistências da liga: quem mais deu assistências (gol contra não tem assistência). */
+function assisters(league) {
+  const map = new Map();
+  for (const f of league.fixtures) for (const g of f.goals) {
+    if (g.og || !g.assist) continue;
+    const k = g.clubId + '|' + g.assist;
+    map.set(k, { player: g.assist, clubId: g.clubId, assists: (map.get(k) ? map.get(k).assists : 0) + 1 });
+  }
+  return [...map.values()].sort((a, b) => b.assists - a.assists || a.player.localeCompare(b.player)).slice(0, 15);
+}
+
+module.exports = { CODE_CHARS, LIMITS, LEAGUE_PRIZE, newCode, roundRobin, start, recordResult, standings, scorers, assisters, winnerOf, cupStage };

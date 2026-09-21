@@ -83,6 +83,15 @@ Depois de cada partida **entre jogadores** (a CPU é só teste), a nota de quem 
   A nota efetiva já entra na simulação das partidas seguintes. Clicando em qualquer jogador ou técnico aparece a ficha
   (características, nota, valor, forma). Cada clube recebe um aviso com quem subiu e quem caiu.
 
+## Estatísticas (artilharia e assistências)
+Aba **Estatísticas**: Artilharia, Assistências, Gols + assistências e Goleiros (jogos sem sofrer gol e defesas), com o clube de cada jogador.
+Só contam partidas entre jogadores (a CPU é teste). Clicando num jogador abre a ficha (com as estatísticas dele por clube) e clicando num
+clube abre o elenco com jogos, gols, assistências, gols+assistências, jogos sem sofrer gol e cartões **pelo clube**. Se o jogador trocar de clube,
+as estatísticas ficam registradas em cada clube por onde passou. Nas ligas e copas há também a aba Assistências.
+- **Assistência:** último passe de um companheiro para quem fez o gol, até 9 s antes, sem a bola ter passado pelo adversário. Gol contra não tem
+  assistência (aproximadamente 65% dos gols têm). Uma assistência também sobe a nota do jogador.
+- As estatísticas ficam na tabela `player_stats` (jogador + clube). Partidas jogadas antes desse recurso não entram.
+
 ## Venda, leilão e trocas justos
 - **Vender ao banco** paga 75% do valor de mercado (preço fixo). **Leiloar** é a venda entre jogadores: o dono escolhe o preço inicial.
 - Na tela de venda aparece a tabela de jogadores com características parecidas (mesma função, nota e habilidades próximas), o valor de

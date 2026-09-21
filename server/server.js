@@ -56,7 +56,7 @@ function privateClub(c) {
 function simulate(homeDef, awayDef, seed, knockout) {
   const m = new E.Match(homeDef, awayDef, { seed, knockout: !!knockout });
   const goals = [], tally = new FM.Tally();
-  m.on(ev => { tally.add(ev); if (ev.type === 'goal') goals.push({ min: ev.min, team: ev.team, side: ev.team, player: ev.player ? ev.player.name : '', og: !!ev.og }); });
+  m.on(ev => { tally.add(ev); if (ev.type === 'goal') goals.push({ min: ev.min, team: ev.team, side: ev.team, player: ev.player ? ev.player.name : '', og: !!ev.og, assist: ev.og ? null : tally.lastAssist }); });
   let n = 0;
   while (!m.finished && n < 100000) { m.update(1 / 60); n++; }
   return { score: [m.home.score, m.away.score], goals, stats: { home: m.home.stats, away: m.away.stats }, pens: m.pens ? m.pens.score.slice() : null, winner: m.winner, tally };
@@ -129,12 +129,27 @@ function playMatch(home, awayClub, isCpu, opts = {}) {
   save();
   return rec;
 }
+/* ---------- estatísticas (artilharia, assistências...) ---------- */
+const pstats = new Map(); // "jogador|clube" -> linha de player_stats
+const STAT_COLS = ['apps', 'goals', 'assists', 'og', 'shots', 'on_target', 'saves', 'clean_sheets', 'yellows', 'fouls'];
+function bumpStats(playerId, clubId, add, touched) {
+  const k = playerId + '|' + clubId;
+  let row = pstats.get(k);
+  if (!row) { row = { player_id: playerId, club_id: clubId }; for (const c of STAT_COLS) row[c] = 0; pstats.set(k, row); }
+  for (const c of STAT_COLS) row[c] += add[c] || 0;
+  touched.add(row);
+}
+const sumStats = rows => rows.reduce((t, r) => { for (const c of STAT_COLS) t[c] = (t[c] || 0) + r[c]; return t; }, {});
+const statsView = r => ({ apps: r.apps || 0, goals: r.goals || 0, assists: r.assists || 0, ga: (r.goals || 0) + (r.assists || 0), shots: r.shots || 0, onTarget: r.on_target || 0, saves: r.saves || 0, cleanSheets: r.clean_sheets || 0, yellows: r.yellows || 0, fouls: r.fouls || 0 });
+const clubTag = id => { const c = db.clubs[id]; return c ? { id: c.id, name: c.name, color: c.color } : { id, name: '(removido)', color: '#888888' }; };
+const playerTag = p => ({ id: p.id, name: p.name, pos: p.pos, role: p.role, ovr: p.ovr, photo: p.photo || null, club: p.club });
+
 /**
  * Depois de uma partida entre jogadores: a nota de quem atuou (titulares e quem entrou) e do técnico sobe ou cai conforme o
  * resultado e o desempenho em campo (ver form.js); o valor de mercado acompanha. Os dois clubes recebem um resumo.
  */
 function updateForm(rec, res, clubs) {
-  const changes = [], all = [];
+  const changes = [], all = [], touched = new Set();
   for (const side of ['home', 'away']) {
     const club = clubs[side], def = side === 'home' ? rec.homeDef : rec.awayDef;
     const gf = res.score[side === 'home' ? 0 : 1], ga = res.score[side === 'home' ? 1 : 0];
@@ -149,9 +164,10 @@ function updateForm(rec, res, clubs) {
     }
     const mine = [];
     for (const [name, w] of who) {
-      const e = res.tally.players.get(side + '|' + name) || { shots: 0, onTarget: 0, goals: 0, og: 0, saves: 0, steals: 0, intercepts: 0, passes: 0, risky: 0, fouls: 0, yellow: 0 };
+      const e = res.tally.players.get(side + '|' + name) || { shots: 0, onTarget: 0, goals: 0, og: 0, assists: 0, saves: 0, steals: 0, intercepts: 0, passes: 0, risky: 0, fouls: 0, yellow: 0 };
       const pts = FM.rate(w.role, e, r, ga) * (w.sub ? 0.6 : 1); // quem entrou no decorrer do jogo pesa menos
       mine.push({ id: w.id, name, side, coach: false, pts });
+      bumpStats(w.id, club.id, { apps: 1, goals: e.goals, assists: e.assists, og: e.og, shots: e.shots, on_target: e.onTarget, saves: e.saves, clean_sheets: (w.role === 'GK' || w.role === 'DEF') && ga === 0 ? 1 : 0, yellows: e.yellow, fouls: e.fouls }, touched);
     }
     if (club.coach && catalog.coachById.has(club.coach)) mine.push({ id: club.coach, name: catalog.coachById.get(club.coach).name, side, coach: true, pts: FM.rateCoach(r, gf - ga) });
     for (const m of mine) {
@@ -162,6 +178,7 @@ function updateForm(rec, res, clubs) {
     }
   }
   store.saveForm(changes);
+  store.saveStats([...touched]);
   rec.stats.form = all; // guardado na partida: dá para mostrar depois quem subiu e quem caiu
   const pct = d => Math.round((FM.valueFactor(d) - 1) * 100);
   const fmt = x => x.name + ' ' + (x.delta > 0 ? '+' : '') + x.delta.toFixed(1) + ' (' + (pct(x.delta) >= 0 ? '+' : '') + pct(x.delta) + '% no valor)';
@@ -365,6 +382,37 @@ route('GET', '/api/catalog', () => {
   };
 });
 
+/** Classificações de estatísticas de todos os jogadores (artilharia, assistências, gols+assistências, goleiros). */
+route('GET', '/api/stats', (req, url) => {
+  auth(req, url);
+  const rows = [...pstats.values()].map(r => ({ r, p: catalog.playerById.get(r.player_id) })).filter(x => x.p && db.clubs[x.r.club_id]);
+  const view = ({ r, p }) => Object.assign({ player: playerTag(p), club: clubTag(r.club_id) }, statsView(r));
+  const top = (list, key, ...then) => list.map(view).sort((a, b) => b[key] - a[key] || then.reduce((d, k) => d || (k === 'apps' ? a.apps - b.apps : b[k] - a[k]), 0) || a.player.name.localeCompare(b.player.name)).slice(0, 15);
+  return {
+    scorers: top(rows.filter(x => x.r.goals > 0), 'goals', 'assists', 'apps'),
+    assists: top(rows.filter(x => x.r.assists > 0), 'assists', 'goals', 'apps'),
+    contributions: top(rows.filter(x => x.r.goals + x.r.assists > 0), 'ga', 'goals', 'apps'),
+    goalkeepers: top(rows.filter(x => x.p.role === 'GK' && x.r.apps > 0), 'cleanSheets', 'saves', 'apps'),
+    matches: db.matches.filter(m => !m.cpu).length
+  };
+});
+
+/** Ficha pública de um clube: campanha, técnico e elenco com as estatísticas de cada jogador pelo clube. */
+route('GET', '/api/club', (req, url) => {
+  auth(req, url);
+  const c = db.clubs[url.searchParams.get('id')];
+  if (!c) bad('Clube não encontrado.', 404);
+  const own = id => pstats.get(id + '|' + c.id);
+  const squad = c.squad.map(id => catalog.playerById.get(id)).filter(Boolean).map(p => ({ player: playerTag(p), stats: statsView(own(p.id) || {}), inLineup: c.lineup.includes(p.id) }))
+    .sort((a, b) => b.stats.ga - a.stats.ga || b.stats.goals - a.stats.goals || b.player.ovr - a.player.ovr);
+  const coach = c.coach ? catalog.coachById.get(c.coach) : null;
+  return {
+    club: Object.assign(publicClub(c), { formation: c.formation }),
+    coach: coach ? { id: coach.id, name: coach.name, ovr: coach.ovr } : null,
+    squad, totals: statsView(sumStats([...pstats.values()].filter(r => r.club_id === c.id)))
+  };
+});
+
 /** Guia de preço para a tela de venda: jogadores parecidos, média e faixa permitida. */
 route('GET', '/api/price-guide', (req, url) => {
   const me = auth(req, url);
@@ -391,6 +439,7 @@ route('GET', '/api/player', (req, url) => {
   return {
     player: it, coach, owner: o ? { id: o.id, name: o.name } : null,
     profile: coach ? null : R.profileFor(it),
+    stats: coach ? null : (() => { const mine = [...pstats.values()].filter(x => x.player_id === it.id); return { total: statsView(sumStats(mine)), byClub: mine.filter(x => db.clubs[x.club_id]).map(x => Object.assign({ club: clubTag(x.club_id) }, statsView(x))) }; })(),
     form: { delta: +delta.toFixed(2), baseOvr: it.ovr0 != null ? it.ovr0 : it.ovr, baseValue: it.value0 != null ? it.value0 : it.value, max: FM.MAX_FORM },
     price: { buy: R.buyPrice(it), sell: Math.round(it.value * R.SELL_RATIO) },
     teamBonus: coach ? +((it.ovr - 75) / 4).toFixed(1) : null // técnico: efeito nas habilidades do time, em %
@@ -668,6 +717,7 @@ function leagueView(l) {
     fixtures: l.fixtures.map(fx),
     standings: l.format === 'league' && l.status !== 'lobby' ? LG.standings(l).map(r => Object.assign({ club: clubInfo(r.clubId) }, r)) : [],
     scorers: LG.scorers(l).map(x => Object.assign({}, x, { club: clubInfo(x.clubId).name })),
+    assisters: LG.assisters(l).map(x => Object.assign({}, x, { club: clubInfo(x.clubId).name })),
     chat: l.chat || []
   };
 }
@@ -878,6 +928,7 @@ async function boot() {
   store.attach(db);
   const owned = new Set(Object.values(db.clubs).flatMap(c => c.squad));
   catalog = load({ imported: await store.loadImported(), persist: p => store.saveImported(p), keep: owned, form: await store.loadForm() });
+  for (const r of await store.loadStats()) pstats.set(r.player_id + '|' + r.club_id, r);
   XC = createExchange({ db, catalog, R, save, push, pushAll });
   // jogadores importados por outros meios (ex.: carga em massa) entram no catálogo sem reiniciar
   let since = new Date().toISOString();

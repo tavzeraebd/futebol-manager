@@ -260,3 +260,16 @@ sup.up, sup.down { font-size: 9px; }
 .pgform input { padding: 10px 12px; font-size: 18px; border-radius: 10px; }
 .pgquick { display: flex; gap: 8px; }
 #pgGo:disabled { opacity: .5; cursor: not-allowed; }
+
+/* estatísticas */
+.stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 16px; margin-top: 12px; }
+.stat-card { min-width: 0; padding: 12px; border-radius: 12px; background: var(--line, rgba(255,255,255,.04)); }
+.stat-card h3 { margin: 0 0 8px; font-size: 16px; }
+.stat-card .tbl { font-size: 13px; }
+.nowrap { white-space: nowrap; }
+.cdot { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: middle; }
+.pos.sm { min-width: 0; margin-left: 6px; padding: 0 4px; font-size: 10px; }
+.pstat { margin-bottom: 14px; }
+.pstat > b { display: block; margin-bottom: 8px; }
+.pstat .tbl.small { font-size: 12px; margin-top: 8px; }
+@media (max-width: 560px) { .stat-grid { grid-template-columns: 1fr; } }

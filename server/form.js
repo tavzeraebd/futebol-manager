@@ -15,11 +15,11 @@ const valueFactor = delta => Math.pow(VALUE_PER_POINT, delta);
 
 /** Conta o que cada jogador fez, a partir dos eventos do motor. Chave: "home|Nome". */
 class Tally {
-  constructor() { this.players = new Map(); this.subsIn = new Set(); this.goals = { home: 0, away: 0 }; }
+  constructor() { this.players = new Map(); this.subsIn = new Set(); this.goals = { home: 0, away: 0 }; this.last = { home: null, away: null }; this.lastAssist = null; }
   get(side, name) {
     const k = side + '|' + name;
     let e = this.players.get(k);
-    if (!e) this.players.set(k, e = { side, name, shots: 0, onTarget: 0, goals: 0, og: 0, saves: 0, steals: 0, intercepts: 0, passes: 0, risky: 0, fouls: 0, yellow: 0 });
+    if (!e) this.players.set(k, e = { side, name, shots: 0, onTarget: 0, goals: 0, og: 0, assists: 0, saves: 0, steals: 0, intercepts: 0, passes: 0, risky: 0, fouls: 0, yellow: 0 });
     return e;
   }
   add(ev) {
@@ -30,11 +30,20 @@ class Tally {
     const e = this.get(ev.type === 'goal' && ev.og ? other : ev.team, p.name); // gol contra: o jogador é do time que sofreu
     switch (ev.type) {
       case 'shot': e.shots++; if (ev.outcome === 'goal' || ev.outcome === 'save') e.onTarget++; break;
-      case 'goal': if (ev.og) e.og++; else e.goals++; break;
+      case 'goal': {
+        this.lastAssist = null;
+        if (ev.og) { e.og++; this.last.home = this.last.away = null; break; }
+        e.goals++;
+        // assistência: o último passe do time, para quem fez o gol, pouco antes (a posse não pode ter mudado de time no meio)
+        const la = this.last[ev.team];
+        if (la && la.to === p.name && la.from !== p.name && ev.t - la.t <= 9) { this.get(ev.team, la.from).assists++; this.lastAssist = la.from; }
+        this.last[ev.team] = null;
+        break;
+      }
       case 'save': e.saves++; break;
-      case 'steal': e.steals++; break;
-      case 'intercept': e.intercepts++; break;
-      case 'pass': e.passes++; if (ev.kind === 'cross' || ev.kind === 'long') e.risky++; break;
+      case 'steal': e.steals++; this.last[other] = null; break; // quem perdeu a bola não constrói mais jogada
+      case 'intercept': e.intercepts++; this.last[other] = null; break;
+      case 'pass': e.passes++; if (ev.kind === 'cross' || ev.kind === 'long') e.risky++; this.last[ev.team] = { from: p.name, to: ev.to && ev.to.name, t: ev.t }; this.last[other] = null; break;
       case 'foul': e.fouls++; break;
       case 'yellow': e.yellow++; break;
       case 'sub': this.subsIn.add(ev.team + '|' + p.name); break;
@@ -51,7 +60,7 @@ const BASELINE = { GK: 0.5, DEF: 0, MID: 0.5, FWD: 0.5 };
  */
 function rate(role, e, r, conceded) {
   const clean = conceded === 0;
-  let s = r * 0.6 + e.goals * 0.6 - e.og * 0.4 - e.yellow * 0.2 - e.fouls * 0.05;
+  let s = r * 0.6 + e.goals * 0.6 + (e.assists || 0) * 0.35 - e.og * 0.4 - e.yellow * 0.2 - e.fouls * 0.05;
   const def = e.steals + e.intercepts;
   if (role === 'GK') {
     s += cap(e.saves * 0.18, 0.9) + (clean ? 0.5 : 0) - Math.min(1, conceded * 0.22);

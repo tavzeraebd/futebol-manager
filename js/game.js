@@ -328,12 +328,13 @@
   function showTab(t) {
     S.tab = t;
     for (const b of $('tabs').children) b.classList.toggle('on', b.dataset.tab === t);
-    for (const id of ['market', 'squad', 'lineup', 'clubs', 'leagues', 'exch', 'matches']) $('tab-' + id).hidden = id !== t;
+    for (const id of ['market', 'squad', 'lineup', 'clubs', 'leagues', 'stats', 'exch', 'matches']) $('tab-' + id).hidden = id !== t;
     if (t === 'market') renderMarket();
     if (t === 'squad') renderSquad();
     if (t === 'lineup') renderLineup();
     if (t === 'clubs') loadClubs();
     if (t === 'leagues') loadLeagues();
+    if (t === 'stats') loadStatsTab();
     if (t === 'exch') loadClubs().then(loadExchange);
     if (t === 'matches') loadMatches();
   }
@@ -467,6 +468,8 @@
   document.addEventListener('click', e => {
     const el = e.target.closest('[data-player]');
     if (el) { e.preventDefault(); openPlayer(el.dataset.player); return; }
+    const cl = e.target.closest('[data-club]');
+    if (cl) { e.preventDefault(); openClub(cl.dataset.club); return; }
     if (e.target.id === 'pModal' || e.target.closest('#pClose')) $('pModal').hidden = true;
   });
   document.addEventListener('keydown', e => { if (e.key === 'Escape') $('pModal').hidden = true; });
@@ -490,15 +493,60 @@
       : '<div class="pstats">' + r.profile.stats.map(s => '<div class="attr"><span>' + esc(s.label) + '</span><div class="abar"><i style="width:' + s.value + '%"></i></div><b>' + s.value + '</b></div>').join('') +
         (r.profile.estimated ? '<p class="muted small">Características estimadas a partir da nota geral e da posição.</p>' : '') + '</div>';
     const avatarBig = r.coach ? '<span class="avatar big"><i>' + esc(p.name.charAt(0)) + '</i></span>' : avatar(p).replace('avatar clickable', 'avatar big');
+    const st = r.stats, tot = st && st.total;
+    const chip = (label, v) => '<div><span>' + label + '</span><b>' + v + '</b></div>';
+    const statsHtml = !st ? '' : '<div class="pstat"><b>Estatísticas nas partidas entre jogadores</b>' + (tot.apps
+      ? '<div class="pfacts">' + chip('Jogos', tot.apps) + chip('Gols', tot.goals) + chip('Assistências', tot.assists) + chip('Chutes no gol', tot.onTarget) +
+        (p.role === 'GK' || p.role === 'DEF' ? chip('Sem sofrer gol', tot.cleanSheets) : '') + (p.role === 'GK' ? chip('Defesas', tot.saves) : '') + chip('Amarelos', tot.yellows) + '</div>' +
+        (st.byClub.length > 1 ? '<table class="tbl small"><tr><th>Clube</th><th class="num">J</th><th class="num">G</th><th class="num">A</th></tr>' + st.byClub.map(c => '<tr><td><a href="#" class="plink" data-club="' + esc(c.club.id) + '">' + esc(c.club.name) + '</a></td><td class="num">' + c.apps + '</td><td class="num">' + c.goals + '</td><td class="num">' + c.assists + '</td></tr>').join('') + '</table>' : '')
+      : '<p class="muted small">Ainda não disputou partidas entre jogadores.</p>') + '</div>';
     return '<div class="phead">' + avatarBig +
       '<div><h3>' + esc(p.name) + '</h3><div class="muted">' + (r.coach ? 'Técnico' : '<span class="pos ' + p.role + '">' + p.pos + '</span>') + ' · ' + esc(p.club) +
       (r.owner ? ' · <span class="tag">' + esc(r.owner.name) + '</span>' : ' · <span class="tag">Livre no mercado</span>') + '</div></div>' +
       '<div class="pscore"><span>Nota</span><b class="ovr">' + p.ovr + '</b></div></div>' +
       '<div class="pfacts">' + facts + '<div><span>Valor de mercado</span><b>' + money(p.value) + '</b></div><div><span>Contratar por</span><b>' + money(r.price.buy) + '</b></div><div><span>Vender por</span><b>' + money(r.price.sell) + '</b></div></div>' +
-      stats +
+      stats + statsHtml +
       '<div class="pform"><div class="row-between"><b>Forma</b><span class="' + (up ? 'up' : down ? 'down' : 'muted') + '">' + (up || down ? (up ? '▲ +' : '▼ ') + f.delta.toFixed(1) + ' pts · valor ' + (pct > 0 ? '+' : '') + pct + '%' : 'estável') + '</span></div>' +
       '<div class="fbar"><i style="left:' + bar + '%"></i></div>' +
       '<p class="muted small">Nota base ' + f.baseOvr + ' · valor base ' + money(f.baseValue) + '. Vitórias e boas atuações (defesas, desarmes, chutes no gol, passes de risco, gols) sobem a nota; derrotas, faltas, cartões e gols sofridos derrubam. Máximo de ±' + f.max + ' pts.</p></div>';
+  }
+
+  /* ---------- estatísticas e ficha do clube ---------- */
+  const clubLink = c => '<a href="#" class="plink" data-club="' + esc(c.id) + '"><i class="cdot" style="background:' + esc(c.color || '#888') + '"></i>' + esc(c.name) + '</a>';
+  const playerLink = p => avatar(p) + '<a href="#" class="plink" data-player="' + esc(p.id) + '">' + esc(p.name) + '</a>';
+  function board(title, rows, cols) {
+    const head = '<tr><th>#</th><th>Jogador</th><th>Clube</th>' + cols.map(c => '<th class="num" title="' + c[2] + '">' + c[1] + '</th>').join('') + '</tr>';
+    const body = rows.map((x, i) => '<tr><td>' + (i + 1) + '</td><td class="nowrap">' + playerLink(x.player) + '<span class="pos ' + x.player.role + ' sm">' + x.player.pos + '</span></td><td class="nowrap">' + clubLink(x.club) + '</td>' +
+      cols.map((c, k) => '<td class="num">' + (k === 0 ? '<b>' + x[c[0]] + '</b>' : x[c[0]]) + '</td>').join('') + '</tr>').join('');
+    return '<div class="stat-card"><h3>' + title + '</h3>' + (rows.length ? '<div class="table-wrap"><table class="tbl">' + head + body + '</table></div>' : '<p class="muted">Ainda sem dados: jogue partidas entre jogadores.</p>') + '</div>';
+  }
+  async function loadStatsTab() {
+    let d;
+    try { d = await api('GET', '/api/stats'); } catch (err) { $('stBoards').innerHTML = '<p class="muted">' + esc(err.message) + '</p>'; return; }
+    $('stBoards').innerHTML =
+      board('⚽ Artilharia', d.scorers, [['goals', 'Gols', 'Gols'], ['assists', 'Ass.', 'Assistências'], ['apps', 'J', 'Jogos']]) +
+      board('🎯 Assistências', d.assists, [['assists', 'Ass.', 'Assistências'], ['goals', 'Gols', 'Gols'], ['apps', 'J', 'Jogos']]) +
+      board('🔥 Gols + assistências', d.contributions, [['ga', 'G+A', 'Gols mais assistências'], ['goals', 'Gols', 'Gols'], ['assists', 'Ass.', 'Assistências'], ['apps', 'J', 'Jogos']]) +
+      board('🧤 Goleiros', d.goalkeepers, [['cleanSheets', 'SSG', 'Jogos sem sofrer gol'], ['saves', 'Def.', 'Defesas'], ['apps', 'J', 'Jogos']]);
+  }
+
+  /** Ficha pública de um clube: campanha, técnico e elenco com as estatísticas de cada jogador. */
+  async function openClub(id) {
+    $('pModal').hidden = false;
+    $('pModal').querySelector('.pbox').classList.add('wide');
+    $('pBody').innerHTML = '<p class="muted">Carregando…</p>';
+    let d;
+    try { d = await api('GET', '/api/club?id=' + encodeURIComponent(id)); } catch (err) { $('pBody').innerHTML = '<p class="muted">' + esc(err.message) + '</p>'; return; }
+    const c = d.club, t = d.totals;
+    const chip = (label, v) => '<div><span>' + label + '</span><b>' + v + '</b></div>';
+    $('pBody').innerHTML = '<div class="phead"><span class="avatar big" style="background:' + esc(c.color) + '"><i style="color:' + textColor(c.color) + '">' + esc(c.name.slice(0, 3).toUpperCase()) + '</i></span>' +
+      '<div><h3>' + esc(c.name) + '</h3><div class="muted">Técnico ' + esc(c.manager) + (c.online ? ' · <span class="up">online</span>' : '') + (d.coach ? ' · comandante ' + esc(d.coach.name) : '') + '</div></div></div>' +
+      '<div class="pfacts">' + chip('Pontos', c.points) + chip('Jogos', c.played) + chip('V / E / D', c.w + ' / ' + c.d + ' / ' + c.l) + chip('Gols pró / contra', c.gf + ' / ' + c.ga) + chip('Elenco', c.squadSize) + chip('Valor do elenco', money(c.squadValue)) + '</div>' +
+      '<div class="pstat"><b>Elenco e estatísticas pelo clube</b>' +
+      (d.squad.length ? '<div class="pgtable"><table class="tbl"><tr><th>Jogador</th><th>Pos</th><th class="num">Nota</th><th class="num" title="Jogos">J</th><th class="num" title="Gols">G</th><th class="num" title="Assistências">A</th><th class="num" title="Gols + assistências">G+A</th><th class="num" title="Jogos sem sofrer gol (goleiro e defensores)">SSG</th><th class="num" title="Cartões amarelos">CA</th></tr>' +
+        d.squad.map(x => '<tr' + (x.inLineup ? ' class="me"' : '') + '><td class="nowrap">' + playerLink(x.player) + '</td><td><span class="pos ' + x.player.role + '">' + x.player.pos + '</span></td><td class="num ovr">' + x.player.ovr + '</td><td class="num">' + x.stats.apps + '</td><td class="num">' + x.stats.goals + '</td><td class="num">' + x.stats.assists + '</td><td class="num"><b>' + x.stats.ga + '</b></td><td class="num">' + x.stats.cleanSheets + '</td><td class="num">' + x.stats.yellows + '</td></tr>').join('') +
+        '<tr><td colspan="3"><b>Total do clube</b></td><td class="num">—</td><td class="num"><b>' + t.goals + '</b></td><td class="num"><b>' + t.assists + '</b></td><td class="num"><b>' + t.ga + '</b></td><td class="num">—</td><td class="num">' + t.yellows + '</td></tr></table></div><p class="muted small">Linhas destacadas: titulares da escalação atual. As estatísticas contam só o que o jogador fez por este clube.</p>'
+        : '<p class="muted small">Este clube ainda não tem jogadores.</p>') + '</div>';
   }
 
   /* ---------- escalação ---------- */
@@ -619,7 +667,7 @@
     $('clTable').innerHTML = '<tr><th>#</th><th>Clube</th><th>Técnico</th><th class="num">P</th><th class="num">J</th><th class="num">V</th><th class="num">E</th><th class="num">D</th><th class="num">SG</th><th class="num">Saldo</th><th class="num">Valor do elenco</th><th></th></tr>' +
       S.clubs.map((c, i) => {
         const me = c.id === S.me.id;
-        return '<tr class="' + (me ? 'me' : '') + '"><td>' + (i + 1) + '</td><td><span class="dot' + (c.online ? ' on' : '') + '"></span>' + esc(c.name) + '</td><td>' + esc(c.manager) + '</td><td class="num"><b>' + c.points + '</b></td><td class="num">' + c.played + '</td><td class="num">' + c.w + '</td><td class="num">' + c.d + '</td><td class="num">' + c.l + '</td><td class="num">' + (c.gf - c.ga) + '</td><td class="num">' + money(c.budget) + '</td><td class="num">' + money(c.squadValue) + '</td><td>' +
+        return '<tr class="' + (me ? 'me' : '') + '"><td>' + (i + 1) + '</td><td><span class="dot' + (c.online ? ' on' : '') + '"></span><a href="#" class="plink" data-club="' + esc(c.id) + '">' + esc(c.name) + '</a></td><td>' + esc(c.manager) + '</td><td class="num"><b>' + c.points + '</b></td><td class="num">' + c.played + '</td><td class="num">' + c.w + '</td><td class="num">' + c.d + '</td><td class="num">' + c.l + '</td><td class="num">' + (c.gf - c.ga) + '</td><td class="num">' + money(c.budget) + '</td><td class="num">' + money(c.squadValue) + '</td><td>' +
           (me ? '' : '<button class="btn primary sm" data-ch="' + esc(c.id) + '"' + (c.online ? '' : ' disabled') + ' type="button">Desafiar</button>') + '</td></tr>';
       }).join('');
   }
@@ -731,7 +779,7 @@
       $('lgDetail').innerHTML = h;
       return;
     }
-    const subs = L.format === 'league' ? [['table', 'Tabela'], ['games', 'Jogos'], ['scorers', 'Artilheiros']] : [['games', 'Chaves e jogos'], ['scorers', 'Artilheiros']];
+    const subs = L.format === 'league' ? [['table', 'Tabela'], ['games', 'Jogos'], ['scorers', 'Artilheiros'], ['assists', 'Assistências']] : [['games', 'Chaves e jogos'], ['scorers', 'Artilheiros'], ['assists', 'Assistências']];
     if (!lgSub || !subs.some(s => s[0] === lgSub)) lgSub = subs[0][0];
     h += '<div class="subtabs">' + subs.map(s => '<button data-sub="' + s[0] + '" class="' + (s[0] === lgSub ? 'on' : '') + '" type="button">' + s[1] + '</button>').join('') + '</div>';
     if (lgSub === 'table') {
@@ -742,6 +790,9 @@
       for (const f of d.fixtures) { let g = groups.find(x => x.round === f.round); if (!g) groups.push(g = { round: f.round, stage: f.stage, list: [] }); g.list.push(f); }
       h += groups.map(g => '<div class="round-title">' + esc(g.stage) + '</div>' + g.list.map(f => fxRow(f, L)).join('')).join('');
       if (L.format === 'cup' && L.status === 'running') h += '<p class="muted">Empate no tempo normal? Vai para a prorrogação e, se continuar, pênaltis.</p>';
+    } else if (lgSub === 'assists') {
+      h += '<div class="table-wrap"><table class="tbl"><tr><th>#</th><th>Jogador</th><th>Clube</th><th class="num">Assist.</th></tr>' +
+        ((d.assisters || []).map((x, i) => '<tr><td>' + (i + 1) + '</td><td>' + esc(x.player) + '</td><td>' + esc(x.club) + '</td><td class="num"><b>' + x.assists + '</b></td></tr>').join('') || '<tr><td colspan="4">Ainda não há assistências.</td></tr>') + '</table></div>';
     } else {
       h += '<div class="table-wrap"><table class="tbl"><tr><th>#</th><th>Jogador</th><th>Clube</th><th class="num">Gols</th></tr>' +
         (d.scorers.map((x, i) => '<tr><td>' + (i + 1) + '</td><td>' + esc(x.player) + '</td><td>' + esc(x.club) + '</td><td class="num"><b>' + x.goals + '</b></td></tr>').join('') || '<tr><td colspan="4">Ainda não há gols.</td></tr>') + '</table></div>';

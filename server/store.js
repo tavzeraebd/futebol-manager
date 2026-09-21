@@ -204,7 +204,14 @@ function createStore() {
       .catch(e => console.error('[supabase] player_form:', e.message));
   }
 
-  return { sb, load, loadForm, saveForm, attach, save, flushNow, loadImported, saveImported, upsert, rows: { clubRow, matchRow, leagueRow, fixtureRow, tradeRow } };
+  /* ---------- estatísticas por jogador e clube (artilharia, assistências...) ---------- */
+  async function loadStats() { return all('player_stats', q => q.order('player_id')); }
+  function saveStats(rows) {
+    if (!rows.length) return;
+    upsert('player_stats', rows.map(r => Object.assign({}, r, { updated_at: new Date().toISOString() }))).catch(e => console.error('[supabase] player_stats:', e.message));
+  }
+
+  return { sb, load, loadForm, saveForm, loadStats, saveStats, attach, save, flushNow, loadImported, saveImported, upsert, rows: { clubRow, matchRow, leagueRow, fixtureRow, tradeRow } };
 }
 
 module.exports = { createStore };
