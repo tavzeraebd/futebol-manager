@@ -5,6 +5,7 @@
  *  - Troca: proposta de jogadores/técnico + dinheiro entre dois clubes; o outro aceita ou recusa.
  */
 const crypto = require('crypto');
+const PR = require('./pricing');
 
 const AUCTION_SECONDS = 45;
 const SNIPE_SECONDS = 10;      // lance nos últimos segundos estende o leilão até aqui
@@ -68,10 +69,15 @@ function createExchange(ctx) {
     if (liveAuctionOf(it.id)) throw err('Esse item já está em leilão.', 409);
     if ([...auctions.values()].filter(a => a.starter === club.id).length >= MAX_AUCTIONS_PER_CLUB) throw err('Você já tem ' + MAX_AUCTIONS_PER_CLUB + ' leilões abertos.');
     if (db.trades.some(t => t.status === 'pending' && (t.give.includes(it.id) || t.get.includes(it.id)))) throw err('Esse item está numa proposta de troca pendente.', 409);
-    const min = Math.round(it.value * 0.5);
-    const start = body.startPrice == null ? it.value : Math.round(+body.startPrice);
-    if (!Number.isFinite(start) || start < min) throw err('O preço inicial mínimo é € ' + money(min) + '.');
-    if (start > 5e9) throw err('Preço inicial alto demais.');
+    const g = PR.guide(catalog, it); // preço fica perto da média de jogadores parecidos (evita "vender" quase de graça entre contas do mesmo dono)
+    const start = body.startPrice == null ? g.reference : Math.round(+body.startPrice);
+    if (!Number.isFinite(start)) throw err('Preço inicial inválido.');
+    if (!owner) { // sem dono: quem compra do "banco" paga pelo menos o preço de contratação (com ágio); leilão não é atalho mais barato
+      const bank = R.buyPrice(it);
+      if (start < bank) throw err('Item sem dono: o leilão começa no preço de mercado, € ' + money(bank) + ' (o mesmo da contratação direta), ou mais.');
+      if (start > Math.round(bank * PR.BAND.high)) throw err('Preço muito acima do mercado: o máximo é € ' + money(Math.round(bank * PR.BAND.high)) + '.');
+    } else if (start < g.band.min) throw err('Preço muito abaixo da média: o mínimo é € ' + money(g.band.min) + ' (' + Math.round(g.band.low * 100) + '% da média de € ' + money(g.reference) + ' de jogadores parecidos).');
+    if (owner && start > g.band.max) throw err('Preço muito acima da média: o máximo é € ' + money(g.band.max) + ' (' + Math.round(g.band.high * 100) + '% da média de € ' + money(g.reference) + ' de jogadores parecidos).');
     const a = { id: crypto.randomUUID(), itemId: it.id, kind: isCoach(it.id) ? 'coach' : 'player', seller: owner ? owner.id : null, starter: club.id, startPrice: start, bid: null, bids: [], createdAt: now(), endsAt: now() + AUCTION_SECONDS * 1000, status: 'live' };
     auctions.set(a.id, a);
     broadcast();
@@ -82,7 +88,7 @@ function createExchange(ctx) {
     const a = auctions.get(body.id);
     if (!a || a.status !== 'live') throw err('Leilão encerrado.', 404);
     if (now() >= a.endsAt) { closeAuction(a); throw err('Leilão encerrado.', 409); }
-    if (a.seller === club.id) throw err('Você não pode dar lance no seu próprio leilão.');
+    if (a.seller === club.id || a.starter === club.id) throw err('Você não pode dar lance no seu próprio leilão.');
     if (a.bid && a.bid.clubId === club.id) throw err('Você já está vencendo esse leilão.');
     const amount = Math.round(+body.amount);
     if (!Number.isFinite(amount)) throw err('Lance inválido.');
@@ -170,6 +176,11 @@ function createExchange(ctx) {
     if (db.trades.filter(x => x.from === club.id && x.status === 'pending').length >= MAX_TRADES_PENDING) throw err('Você já tem ' + MAX_TRADES_PENDING + ' propostas pendentes.');
     const p = tradeProblem(t);
     if (p) throw err(p, 409);
+    const worth = ids => ids.reduce((s, id) => s + (item(id) ? item(id).value : 0), 0);
+    const out = worth(t.give) + Math.max(t.cash, 0), inn = worth(t.get) + Math.max(-t.cash, 0); // o que você entrega x o que recebe
+    if (Math.min(out, inn) <= 0 || Math.max(out, inn) / Math.min(out, inn) > PR.TRADE_MAX_RATIO) {
+      throw err('Troca desequilibrada: você entrega € ' + money(out) + ' e recebe € ' + money(inn) + ' (valores de mercado). A diferença pode ser de no máximo ' + Math.round((PR.TRADE_MAX_RATIO - 1) * 100) + '%; ajuste jogadores ou dinheiro.');
+    }
     db.trades.push(t);
     if (db.trades.length > 400) db.trades.splice(0, db.trades.length - 400);
     save();

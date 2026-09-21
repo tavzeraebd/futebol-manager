@@ -83,6 +83,17 @@ Depois de cada partida **entre jogadores** (a CPU é só teste), a nota de quem 
   A nota efetiva já entra na simulação das partidas seguintes. Clicando em qualquer jogador ou técnico aparece a ficha
   (características, nota, valor, forma). Cada clube recebe um aviso com quem subiu e quem caiu.
 
+## Venda, leilão e trocas justos
+- **Vender ao banco** paga 75% do valor de mercado (preço fixo). **Leiloar** é a venda entre jogadores: o dono escolhe o preço inicial.
+- Na tela de venda aparece a tabela de jogadores com características parecidas (mesma função, nota e habilidades próximas), o valor de
+  cada um, a média e a **faixa permitida** (80% a 130% da referência, que é metade o valor do jogador e metade a média dos parecidos).
+  Fora da faixa o servidor recusa. Isso impede, por exemplo, comprar jogadores em várias contas e "vender" quase de graça para a conta principal.
+- Jogador **sem clube** só vai a leilão a partir do preço de contratação (120% do valor): leilão não é atalho mais barato que a compra direta.
+  Quem abriu o leilão não pode dar lance nele.
+- **Trocas** precisam ser equilibradas: o que você entrega (jogadores + dinheiro) e o que recebe não podem diferir mais de 35% em valor de mercado
+  (nada de "dar" um jogador caro por quase nada).
+- Mesmo assim, não há como impedir por regra que uma mesma pessoa jogue com duas contas; vale ficar de olho em clubes com o mesmo técnico.
+
 ## Recomeçar a temporada
 `node scripts/reset-season.js --yes` (com o servidor parado ou reiniciado logo depois) devolve todos os clubes ao saldo inicial, sem
 elenco, técnico, pontos, partidas, ligas, trocas nem forma. As contas são mantidas. Faz backup em `data/backup-temporada-*.json`.

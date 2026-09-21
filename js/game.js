@@ -473,6 +473,7 @@
 
   async function openPlayer(id) {
     $('pModal').hidden = false;
+    $('pModal').querySelector('.pbox').classList.remove('wide');
     $('pBody').innerHTML = '<p class="muted">Carregando…</p>';
     try { $('pBody').innerHTML = playerCard(await api('GET', '/api/player?id=' + encodeURIComponent(id))); }
     catch (err) { $('pBody').innerHTML = '<p class="muted">' + esc(err.message) + '</p>'; }
@@ -1148,16 +1149,52 @@
     } catch (err) { fail(err); }
     loadExchange();
   };
-  /** Abre um leilão (botões "Leiloar" do Mercado e do Elenco). */
+  /**
+   * Tela de venda (botões "Leiloar" do Mercado e do Elenco): mostra jogadores parecidos com o valor de cada um e a faixa de preço
+   * permitida, para o dono escolher o preço inicial sem ficar muito abaixo nem muito acima do mercado.
+   */
   async function auctionItem(id) {
-    const it = itemOf(id);
-    if (!it) return;
-    const v = prompt('Leiloar ' + it.name + '.\nPreço inicial em milhões de euros (mínimo ' + (it.value * 0.5 / 1e6).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + '):', String(Math.round(it.value / 1e5) / 10));
-    if (v == null) return;
-    try {
-      await api('POST', '/api/auction/start', { id, startPrice: Math.round(parseFloat(String(v).replace(',', '.')) * 1e6) });
-      showTab('exch');
-    } catch (err) { fail(err); }
+    $('pModal').hidden = false;
+    $('pModal').querySelector('.pbox').classList.add('wide');
+    $('pBody').innerHTML = '<p class="muted">Calculando a média de mercado…</p>';
+    let gd;
+    try { gd = await api('GET', '/api/price-guide?id=' + encodeURIComponent(id)); }
+    catch (err) { $('pBody').innerHTML = '<p class="muted">' + esc(err.message) + '</p>'; return; }
+    const STAT = [['shot', 'Fin'], ['pass', 'Pas'], ['dribble', 'Dri'], ['def', 'Def'], ['speed', 'Vel']];
+    const row = (p, me) => '<tr' + (me ? ' class="me"' : '') + '><td>' + (me ? '<b>' + esc(p.name) + '</b> <span class="tag">seu</span>' : esc(p.name)) + '<div class="muted small">' + esc(p.club || '') + '</div></td><td>' + esc(p.pos) + '</td><td class="num ovr">' + p.ovr + '</td>' +
+      (gd.coach ? '' : STAT.map(s => '<td class="num">' + (p.stats && p.stats[s[0]] != null ? p.stats[s[0]] : '—') + '</td>').join('')) + '<td class="num"><b>' + money(p.value) + '</b></td></tr>';
+    const head = '<tr><th>' + (gd.coach ? 'Técnico' : 'Jogador') + '</th><th>Pos</th><th class="num">Nota</th>' + (gd.coach ? '' : STAT.map(s => '<th class="num" title="' + { shot: 'Finalização', pass: 'Passe', dribble: 'Drible', def: 'Defesa', speed: 'Velocidade' }[s[0]] + '">' + s[1] + '</th>').join('')) + '<th class="num">Valor</th></tr>';
+    const min = gd.band.min, max = gd.band.max, ref = gd.reference;
+    $('pBody').innerHTML = '<h3>Vender ' + esc(gd.self.name) + '</h3>' +
+      (gd.unowned ? '<p class="muted">Este item está sem clube: o leilão começa no preço de contratação (' + money(ref) + ') ou mais, nunca abaixo. Você não pode dar lance no leilão que abriu.</p>' : '<p class="muted">Você define o preço inicial do leilão. Para o mercado ficar justo, ele precisa ficar perto da média de ' + (gd.coach ? 'técnicos' : 'jogadores com características parecidas') + '.</p>') +
+      '<div class="pgtable"><table>' + head + row(gd.self, true) + gd.neighbors.map(n => row(n, false)).join('') + '</table></div>' +
+      '<div class="pgsum"><div><span>Média dos parecidos</span><b>' + money(gd.similarAverage) + '</b></div><div><span>Preço de referência</span><b>' + money(ref) + '</b></div>' +
+      '<div><span>Faixa permitida</span><b>' + money(min) + ' a ' + money(max) + '</b></div></div>' +
+      '<div class="pgform"><label>Preço inicial (milhões de €)<input id="pgPrice" type="number" step="0.1" min="' + (min / 1e6) + '" max="' + (max / 1e6) + '" value="' + Math.round(ref / 1e5) / 10 + '"></label>' +
+      '<div class="pgquick"><button class="btn sm" data-pg="' + min + '" type="button">Mínimo</button><button class="btn sm" data-pg="' + ref + '" type="button">Média</button><button class="btn sm" data-pg="' + max + '" type="button">Máximo</button></div>' +
+      '<p id="pgHint" class="muted small"></p><button id="pgGo" class="btn primary" type="button">Iniciar leilão</button></div>';
+    const input = $('pgPrice'), hint = $('pgHint'), go = $('pgGo');
+    const check = () => {
+      const v = Math.round(parseFloat(String(input.value).replace(',', '.')) * 1e6);
+      const ok = Number.isFinite(v) && v >= min && v <= max;
+      go.disabled = !ok;
+      hint.className = 'small ' + (ok ? 'muted' : 'down');
+      hint.textContent = !Number.isFinite(v) ? 'Digite um valor.' : v < min ? 'Muito abaixo da média: o mínimo é ' + money(min) + '.' : v > max ? 'Muito acima da média: o máximo é ' + money(max) + '.' : Math.round((v / ref) * 100) + '% da referência de mercado.';
+      return v;
+    };
+    input.oninput = check;
+    $('pBody').querySelectorAll('[data-pg]').forEach(bt => { bt.onclick = () => { input.value = Math.round(+bt.dataset.pg / 1e5) / 10; check(); }; });
+    go.onclick = async () => {
+      const v = check();
+      if (go.disabled) return;
+      go.disabled = true;
+      try {
+        await api('POST', '/api/auction/start', { id, startPrice: v });
+        $('pModal').hidden = true;
+        showTab('exch');
+      } catch (err) { fail(err); check(); }
+    };
+    check();
   }
 
   /* ---------- jogo de treino: você controla ---------- */

@@ -10,6 +10,7 @@ const R = require('./rules');
 const ss = require('./providers/sofascore');
 const wd = require('./providers/wikidata');
 const FM = require('./form');
+const PR = require('./pricing');
 const LG = require('./leagues');
 const CH = require('./chat');
 const { createExchange } = require('./exchange');
@@ -362,6 +363,21 @@ route('GET', '/api/catalog', () => {
     players: catalog.players.map(p => Object.assign({}, p, { owner: own(p.id) })),
     coaches: catalog.coaches.map(c => Object.assign({}, c, { owner: own(c.id) }))
   };
+});
+
+/** Guia de preço para a tela de venda: jogadores parecidos, média e faixa permitida. */
+route('GET', '/api/price-guide', (req, url) => {
+  const me = auth(req, url);
+  const it = catalog.item(url.searchParams.get('id'));
+  if (!it) bad('Item não encontrado.', 404);
+  const o = ownerOf(it.id);
+  if (o && o.id !== me.id) bad('Só o dono (' + o.name + ') pode vender esse item.', 409);
+  const g = PR.guide(catalog, it);
+  if (!o) { // sem dono: o leilão nunca começa abaixo do preço de contratação direta
+    const bank = R.buyPrice(it);
+    g.unowned = true; g.reference = bank; g.band = { min: bank, max: Math.round(bank * PR.BAND.high), low: 1, high: PR.BAND.high };
+  }
+  return g;
 });
 
 /** Ficha de um jogador ou técnico: características, nota, valor e forma. */

@@ -244,3 +244,19 @@ label { display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
 .up { color: #22c55e; } .down { color: #ef4444; }
 sup.up, sup.down { font-size: 9px; }
 .small { font-size: 12px; }
+
+/* tela de venda */
+.pbox.wide { width: min(760px, 100%); }
+.pgtable { overflow-x: auto; margin: 10px 0; border: 1px solid var(--line, rgba(255,255,255,.1)); border-radius: 10px; }
+.pgtable table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.pgtable th, .pgtable td { padding: 6px 8px; text-align: left; border-bottom: 1px solid var(--line, rgba(255,255,255,.08)); white-space: nowrap; }
+.pgtable th.num, .pgtable td.num { text-align: right; }
+.pgtable tr.me td { background: rgba(124, 58, 237, .16); }
+.pgsum { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; margin: 12px 0; }
+.pgsum div { padding: 8px 10px; border-radius: 10px; background: var(--line, rgba(255,255,255,.06)); }
+.pgsum span { display: block; font-size: 11px; color: var(--muted); }
+.pgform { display: grid; gap: 8px; }
+.pgform label { display: grid; gap: 4px; font-size: 13px; }
+.pgform input { padding: 10px 12px; font-size: 18px; border-radius: 10px; }
+.pgquick { display: flex; gap: 8px; }
+#pgGo:disabled { opacity: .5; cursor: not-allowed; }
