@@ -470,14 +470,16 @@
 
     $('luSlots').innerHTML = slots.map((s, i) => {
       const opts = squad.filter(p => (s.pos === 'GK') === (p.pos === 'GK')).sort((a, b) => (b.role === s.role) - (a.role === s.role) || b.ovr - a.ovr);
-      return '<div class="slot"><span class="pos ' + s.role + '">' + s.pos + '</span><select data-slot="' + i + '"><option value="">— vazio —</option>' +
+      const cur = S.lineup[i] && player(S.lineup[i]);
+      return '<div class="slot"><span class="pos ' + s.role + '">' + s.pos + '</span>' + (cur ? avatar(cur) : '<span class="avatar"></span>') + '<select data-slot="' + i + '"><option value="">— vazio —</option>' +
         opts.map(p => '<option value="' + esc(p.id) + '"' + (S.lineup[i] === p.id ? ' selected' : '') + '>' + esc(p.name) + ' (' + p.pos + ' · ' + p.ovr + (p.role !== s.role && s.pos !== 'GK' ? ' · fora de posição' : '') + ')</option>').join('') + '</select></div>';
     }).join('');
 
     const col = S.me.color, tc = textColor(col);
     $('luPitch').innerHTML = slots.map((s, i) => {
       const p = S.lineup[i] && player(S.lineup[i]);
-      return '<div class="pt" style="left:' + (s.fy * 100) + '%;top:' + (100 - s.fx * 100) + '%"><i style="background:' + col + ';color:' + tc + '">' + (i + 1) + '</i><span>' + esc(p ? p.short : s.pos) + '</span></div>';
+      const photo = p && p.photo ? '<img src="' + esc(p.photo) + '" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">' : '';
+      return '<div class="pt" style="left:' + (s.fy * 100) + '%;top:' + (100 - s.fx * 100) + '%"><i class="' + (photo ? 'ph' : '') + '" style="background:' + col + ';color:' + tc + '">' + photo + '<b>' + (i + 1) + '</b></i><span>' + esc(p ? p.short : s.pos) + '</span></div>';
     }).join('');
 
     const chosen = S.lineup.map(id => id && player(id)).filter(Boolean);

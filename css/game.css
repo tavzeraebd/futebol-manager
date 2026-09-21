@@ -62,7 +62,7 @@ label { display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
 .mini-pitch .pt { position: absolute; transform: translate(-50%, -50%); width: 34px; text-align: center; font-size: 10px; color: #fff; font-weight: 600; text-shadow: 0 1px 2px #000; }
 .mini-pitch .pt i { display: grid; place-items: center; width: 26px; height: 26px; margin: 0 auto 1px; border-radius: 50%; font-style: normal; font-size: 11px; font-weight: 800; border: 2px solid #fff; }
 .mini-pitch .pt span { display: block; white-space: nowrap; margin-left: -20px; margin-right: -20px; overflow: hidden; text-overflow: ellipsis; }
-.slot { display: grid; grid-template-columns: 46px 1fr; gap: 8px; align-items: center; margin-bottom: 6px; }
+.slot { display: grid; grid-template-columns: 46px 30px 1fr; gap: 8px; align-items: center; margin-bottom: 6px; }
 .slot select { width: 100%; }
 
 /* partida */
@@ -208,3 +208,12 @@ label { display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
 .avatar { position: relative; display: inline-block; width: 28px; height: 28px; border-radius: 50%; overflow: hidden; vertical-align: middle; margin-right: 8px; background: var(--line); }
 .avatar i { position: absolute; inset: 0; display: grid; place-items: center; font-style: normal; font-size: 12px; font-weight: 700; color: var(--muted); }
 .avatar img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center top; }
+
+/* escalação: foto do jogador no campinho (o número vira uma etiqueta no canto) */
+.mini-pitch .pt { width: 44px; }
+.mini-pitch .pt i { position: relative; overflow: hidden; }
+.mini-pitch .pt i b { font-weight: inherit; }
+.mini-pitch .pt i.ph { width: 38px; height: 38px; }
+.mini-pitch .pt i.ph img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center top; }
+.mini-pitch .pt i.ph b { position: absolute; left: 0; bottom: 0; min-width: 15px; padding: 0 3px; border-radius: 0 6px 0 0; font-size: 9px; line-height: 14px; background: rgba(0, 0, 0, .65); color: #fff; }
+.mini-pitch .pt span { margin-left: -14px; margin-right: -14px; }
