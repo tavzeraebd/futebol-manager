@@ -196,7 +196,15 @@ function createStore() {
       .then(r => { if (r.error) console.error('[supabase] imported_players:', r.error.message); });
   }
 
-  return { sb, load, attach, save, flushNow, loadImported, saveImported, upsert, rows: { clubRow, matchRow, leagueRow, fixtureRow, tradeRow } };
+  /* ---------- forma dos jogadores e técnicos ---------- */
+  async function loadForm() { return new Map((await all('player_form', q => q.order('player_id'))).map(r => [r.player_id, r.delta])); }
+  function saveForm(rows) { // rows: [[id, delta]]
+    if (!rows.length) return;
+    upsert('player_form', rows.map(([id, delta]) => ({ player_id: id, delta, updated_at: new Date().toISOString() })))
+      .catch(e => console.error('[supabase] player_form:', e.message));
+  }
+
+  return { sb, load, loadForm, saveForm, attach, save, flushNow, loadImported, saveImported, upsert, rows: { clubRow, matchRow, leagueRow, fixtureRow, tradeRow } };
 }
 
 module.exports = { createStore };

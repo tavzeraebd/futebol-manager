@@ -73,6 +73,20 @@ Tudo o que precisa persistir (clubes, elencos, partidas, ligas/copas, trocas, jo
 3. Uma vez, para copiar os dados antigos: `npm run migrate` (lê `data/db.json`).
 4. `iniciar.bat` / `npm start`.
 
+## Forma dos jogadores e técnicos
+Depois de cada partida **entre jogadores** (a CPU é só teste), a nota de quem atuou (titulares e quem entrou) e do técnico muda:
+- **Resultado:** vitória sobe, derrota desce (empate ~0; decisão nos pênaltis vale metade).
+- **Desempenho individual** (medido nos eventos da partida): goleiro (defesas, gols sofridos, jogo sem sofrer gol), defensores
+  (desarmes/interceptações, gols sofridos, faltas e cartões), meias (passes, passes de risco, chutes no gol) e atacantes (gols,
+  chutes no gol, chutes desperdiçados, cruzamentos e lançamentos).
+- O valor de mercado acompanha (~6% por ponto de nota). A forma acumulada vai de −8 a +8 pontos e fica na tabela `player_form`.
+  A nota efetiva já entra na simulação das partidas seguintes. Clicando em qualquer jogador ou técnico aparece a ficha
+  (características, nota, valor, forma). Cada clube recebe um aviso com quem subiu e quem caiu.
+
+## Recomeçar a temporada
+`node scripts/reset-season.js --yes` (com o servidor parado ou reiniciado logo depois) devolve todos os clubes ao saldo inicial, sem
+elenco, técnico, pontos, partidas, ligas, trocas nem forma. As contas são mantidas. Faz backup em `data/backup-temporada-*.json`.
+
 ## Dados
 - Padrão: `server/seed.js` (elencos reais, valores/notas aproximados escritos à mão).
 - Sofascore (opcional): `npm run sync -- "Clube=ID" ...` grava `data/catalog.sofascore.json`, que passa a ser usado.

@@ -55,6 +55,33 @@ function skillsFor(player, slotRole, coach) {
   return { skill, speed: +(1 + (ovr - 75) / 400).toFixed(3) };
 }
 
+/**
+ * Características para exibir (0-99). Jogadores com atributos reais (Sofascore) mostram esses valores; os demais têm os números
+ * derivados da nota geral, do papel em campo e de um pequeno desvio fixo por jogador (só para a tela: o motor usa skillsFor).
+ */
+function profileFor(p) {
+  if (p.attrs && p.role !== 'GK') {
+    const L = { attacking: 'Ataque', technical: 'Técnica', tactical: 'Tática', defending: 'Defesa', creativity: 'Criatividade' };
+    return { estimated: false, stats: Object.keys(L).map(k => ({ key: k, label: L[k], value: clamp(Math.round(p.attrs[k] || 0), 0, 99) })) };
+  }
+  let h = 0;
+  for (const ch of String(p.id)) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  const jit = k => ((h >>> (k * 3)) % 5) - 2;
+  const t = TILT[p.role] || TILT.MID;
+  const at = (k, i) => clamp(Math.round(p.ovr + (t[k] - 0.95) * 40 + jit(i)), 25, 99);
+  const speed = clamp(Math.round(p.ovr + ({ GK: -12, DEF: -2, MID: 0, FWD: 3 }[p.role] || 0) + jit(4)), 25, 99);
+  return {
+    estimated: true,
+    stats: [
+      { key: 'shot', label: 'Finalização', value: at('shot', 0) },
+      { key: 'pass', label: 'Passe', value: at('pass', 1) },
+      { key: 'dribble', label: 'Drible', value: at('dribble', 2) },
+      { key: 'def', label: p.role === 'GK' ? 'Defesa do gol' : 'Defesa', value: at('def', 3) },
+      { key: 'speed', label: 'Velocidade', value: speed }
+    ]
+  };
+}
+
 function textColor(hex) {
   const n = parseInt(hex.slice(1), 16);
   const lum = (0.299 * (n >> 16) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255)) / 255;
@@ -145,4 +172,4 @@ function validateLineup(formation, lineup, squad, catalog, requireFull) {
   return null;
 }
 
-module.exports = { START_BUDGET, BUY_PREMIUM, buyPrice, SELL_RATIO, SQUAD_MAX, PRIZE, FORMATIONS, buildTeamDef, validateLineup, validatePlan, TACTICS, MAX_SUBS, MAX_TACTIC_CHANGES, skillsFor };
+module.exports = { profileFor, START_BUDGET, BUY_PREMIUM, buyPrice, SELL_RATIO, SQUAD_MAX, PRIZE, FORMATIONS, buildTeamDef, validateLineup, validatePlan, TACTICS, MAX_SUBS, MAX_TACTIC_CHANGES, skillsFor };

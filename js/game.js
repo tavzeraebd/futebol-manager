@@ -12,7 +12,9 @@
   /* ---------- utilidades ---------- */
   const money = e => e >= 1e6 ? '€ ' + (e / 1e6).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + ' M' : '€ ' + Math.round(e / 1e3) + ' mil';
   const norm = t => String(t).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
-  const avatar = p => '<span class="avatar">' + (p.photo ? '<img src="' + esc(p.photo) + '" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">' : '') + '<i>' + esc((p.name || '?').trim().charAt(0).toUpperCase()) + '</i></span>';
+  const avatar = p => '<span class="avatar clickable" data-player="' + esc(p.id) + '" title="Ver características">' + (p.photo ? '<img src="' + esc(p.photo) + '" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">' : '') + '<i>' + esc((p.name || '?').trim().charAt(0).toUpperCase()) + '</i></span>';
+  /** Seta de alta/baixa da forma (só aparece depois de alguns jogos). */
+  const formTag = p => (p.form > 0.05 ? ' <sup class="up" title="Em alta: +' + p.form.toFixed(1) + ' pts">▲</sup>' : p.form < -0.05 ? ' <sup class="down" title="Em baixa: ' + p.form.toFixed(1) + ' pts">▼</sup>' : '');
   const price = p => Math.round(p.value * S.meta.buyPremium);
   const lsGet = k => { try { return localStorage.getItem(k); } catch (_) { return null; } };
   const lsSet = (k, v) => { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch (_) { /* ignora */ } };
@@ -402,8 +404,8 @@
       else if (p.owner) act = '<span class="tag">' + esc(p.owner.name) + '</span>';
       else act = '<button class="btn primary sm" data-buy="' + esc(p.id) + '"' + (price(p) > S.me.budget ? ' disabled' : '') + ' type="button">Contratar</button> <button class="btn sm" data-auc="' + esc(p.id) + '" type="button">Leilão</button>';
       return S.kind === 'coach'
-        ? '<tr><td>' + esc(p.name) + '</td><td>' + esc(p.club) + '</td><td class="num ovr">' + p.ovr + '</td><td class="num">' + money(price(p)) + '</td><td>' + act + '</td></tr>'
-        : '<tr><td><span class="pos ' + p.role + '">' + p.pos + '</span></td><td>' + avatar(p) + '<a href="#" class="plink" data-info="' + esc(p.id) + '">' + esc(p.name) + '</a>' + (p.source === 'sofascore' ? ' <span class="tag">SS</span>' : p.source === 'wikidata' ? ' <span class="tag">WD</span>' : '') + '</td><td>' + esc(p.club) + '</td><td class="num ovr">' + p.ovr + '</td><td class="num">' + (p.valueEstimated ? '~' : '') + money(p.value) + '</td><td class="num"><b>' + money(price(p)) + '</b></td><td>' + act + '</td></tr>' +
+        ? '<tr><td><a href="#" class="plink" data-player="' + esc(p.id) + '">' + esc(p.name) + '</a></td><td>' + esc(p.club) + '</td><td class="num ovr">' + p.ovr + formTag(p) + '</td><td class="num">' + money(price(p)) + '</td><td>' + act + '</td></tr>'
+        : '<tr><td><span class="pos ' + p.role + '">' + p.pos + '</span></td><td>' + avatar(p) + '<a href="#" class="plink" data-player="' + esc(p.id) + '">' + esc(p.name) + '</a>' + (p.source === 'sofascore' ? ' <span class="tag">SS</span>' : p.source === 'wikidata' ? ' <span class="tag">WD</span>' : '') + '</td><td>' + esc(p.club) + '</td><td class="num ovr">' + p.ovr + '</td><td class="num">' + (p.valueEstimated ? '~' : '') + money(p.value) + '</td><td class="num"><b>' + money(price(p)) + '</b></td><td>' + act + '</td></tr>' +
           (S.open === p.id ? '<tr class="detail"><td colspan="7">' + details(p) + '</td></tr>' : '');
     }).join('') || '<tr><td>Nada encontrado.</td></tr>';
     $('mkMore').hidden = total <= S.shown;
@@ -438,11 +440,11 @@
     const sq = S.me.squad.map(player).filter(Boolean).sort((a, b) => ['GK', 'DEF', 'MID', 'FWD'].indexOf(a.role) - ['GK', 'DEF', 'MID', 'FWD'].indexOf(b.role) || b.ovr - a.ovr);
     $('sqInfo').textContent = sq.length + ' jogadores · valor do elenco ' + money(sq.reduce((s, p) => s + p.value, 0)) + ' · compra com ágio de ' + Math.round((S.meta.buyPremium - 1) * 100) + '%, venda por ' + Math.round(S.meta.sellRatio * 100) + '% do valor de mercado.';
     $('sqTable').innerHTML = '<tr><th>Pos</th><th>Jogador</th><th>Clube de origem</th><th class="num">Nota</th><th class="num">Valor</th><th class="num">Venda</th><th></th></tr>' +
-      (sq.map(p => '<tr><td><span class="pos ' + p.role + '">' + p.pos + '</span></td><td>' + avatar(p) + esc(p.name) + '</td><td>' + esc(p.club) + '</td><td class="num ovr">' + p.ovr + '</td><td class="num">' + money(p.value) + '</td><td class="num">' + money(p.value * S.meta.sellRatio) + '</td><td><button class="btn danger sm" data-sell="' + esc(p.id) + '" type="button">Vender</button> <button class="btn sm" data-auc="' + esc(p.id) + '" type="button">Leiloar</button></td></tr>').join('') ||
+      (sq.map(p => '<tr><td><span class="pos ' + p.role + '">' + p.pos + '</span></td><td>' + avatar(p) + '<a href="#" class="plink" data-player="' + esc(p.id) + '">' + esc(p.name) + '</a></td><td>' + esc(p.club) + '</td><td class="num ovr">' + p.ovr + formTag(p) + '</td><td class="num">' + money(p.value) + '</td><td class="num">' + money(p.value * S.meta.sellRatio) + '</td><td><button class="btn danger sm" data-sell="' + esc(p.id) + '" type="button">Vender</button> <button class="btn sm" data-auc="' + esc(p.id) + '" type="button">Leiloar</button></td></tr>').join('') ||
         '<tr><td colspan="7">Seu elenco está vazio. Vá ao Mercado e contrate jogadores.</td></tr>');
     const c = S.me.coach && coach(S.me.coach);
     $('sqCoach').innerHTML = c
-      ? '<b>' + esc(c.name) + '</b> · nota ' + c.ovr + ' · <button class="btn danger sm" data-sellc="' + esc(c.id) + '" type="button">Demitir (recebe ' + money(c.value * S.meta.sellRatio) + ')</button> <button class="btn sm" data-auc="' + esc(c.id) + '" type="button">Leiloar</button>'
+      ? '<a href="#" class="plink" data-player="' + esc(c.id) + '"><b>' + esc(c.name) + '</b></a> · nota ' + c.ovr + formTag(c) + ' · <button class="btn danger sm" data-sellc="' + esc(c.id) + '" type="button">Demitir (recebe ' + money(c.value * S.meta.sellRatio) + ')</button> <button class="btn sm" data-auc="' + esc(c.id) + '" type="button">Leiloar</button>'
       : '<span class="muted">Sem técnico. Contrate um na aba Mercado > Técnicos: a nota dele melhora todo o time.</span>';
   }
   $('tab-squad').onclick = async e => {
@@ -460,6 +462,43 @@
       renderTop(); renderSquad();
     } catch (err) { fail(err); }
   };
+
+  /* ---------- ficha do jogador / técnico ---------- */
+  document.addEventListener('click', e => {
+    const el = e.target.closest('[data-player]');
+    if (el) { e.preventDefault(); openPlayer(el.dataset.player); return; }
+    if (e.target.id === 'pModal' || e.target.closest('#pClose')) $('pModal').hidden = true;
+  });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') $('pModal').hidden = true; });
+
+  async function openPlayer(id) {
+    $('pModal').hidden = false;
+    $('pBody').innerHTML = '<p class="muted">Carregando…</p>';
+    try { $('pBody').innerHTML = playerCard(await api('GET', '/api/player?id=' + encodeURIComponent(id))); }
+    catch (err) { $('pBody').innerHTML = '<p class="muted">' + esc(err.message) + '</p>'; }
+  }
+  function playerCard(r) {
+    const p = r.player, f = r.form, up = f.delta > 0.05, down = f.delta < -0.05;
+    const pct = Math.round((Math.pow(1.06, f.delta) - 1) * 100);
+    const foot = { Right: 'direito', Left: 'esquerdo', Both: 'ambos' }[p.foot] || p.foot;
+    const facts = [['País', p.country], ['Idade', p.age ? p.age + ' anos' : null], ['Altura', p.height ? p.height + ' cm' : null], ['Pé', foot], ['Camisa', p.number]]
+      .filter(x => x[1]).map(x => '<div><span>' + x[0] + '</span><b>' + esc(String(x[1])) + '</b></div>').join('');
+    const bar = ((f.delta + f.max) / (2 * f.max)) * 100;
+    const stats = r.coach
+      ? '<div class="pstats"><p class="muted">O técnico melhora ou piora as habilidades de todo o time: <b>' + (r.teamBonus >= 0 ? '+' : '') + r.teamBonus + '%</b> com a nota atual.</p></div>'
+      : '<div class="pstats">' + r.profile.stats.map(s => '<div class="attr"><span>' + esc(s.label) + '</span><div class="abar"><i style="width:' + s.value + '%"></i></div><b>' + s.value + '</b></div>').join('') +
+        (r.profile.estimated ? '<p class="muted small">Características estimadas a partir da nota geral e da posição.</p>' : '') + '</div>';
+    const avatarBig = r.coach ? '<span class="avatar big"><i>' + esc(p.name.charAt(0)) + '</i></span>' : avatar(p).replace('avatar clickable', 'avatar big');
+    return '<div class="phead">' + avatarBig +
+      '<div><h3>' + esc(p.name) + '</h3><div class="muted">' + (r.coach ? 'Técnico' : '<span class="pos ' + p.role + '">' + p.pos + '</span>') + ' · ' + esc(p.club) +
+      (r.owner ? ' · <span class="tag">' + esc(r.owner.name) + '</span>' : ' · <span class="tag">Livre no mercado</span>') + '</div></div>' +
+      '<div class="pscore"><span>Nota</span><b class="ovr">' + p.ovr + '</b></div></div>' +
+      '<div class="pfacts">' + facts + '<div><span>Valor de mercado</span><b>' + money(p.value) + '</b></div><div><span>Contratar por</span><b>' + money(r.price.buy) + '</b></div><div><span>Vender por</span><b>' + money(r.price.sell) + '</b></div></div>' +
+      stats +
+      '<div class="pform"><div class="row-between"><b>Forma</b><span class="' + (up ? 'up' : down ? 'down' : 'muted') + '">' + (up || down ? (up ? '▲ +' : '▼ ') + f.delta.toFixed(1) + ' pts · valor ' + (pct > 0 ? '+' : '') + pct + '%' : 'estável') + '</span></div>' +
+      '<div class="fbar"><i style="left:' + bar + '%"></i></div>' +
+      '<p class="muted small">Nota base ' + f.baseOvr + ' · valor base ' + money(f.baseValue) + '. Vitórias e boas atuações (defesas, desarmes, chutes no gol, passes de risco, gols) sobem a nota; derrotas, faltas, cartões e gols sofridos derrubam. Máximo de ±' + f.max + ' pts.</p></div>';
+  }
 
   /* ---------- escalação ---------- */
   function renderLineup() {
@@ -479,7 +518,7 @@
     $('luPitch').innerHTML = slots.map((s, i) => {
       const p = S.lineup[i] && player(S.lineup[i]);
       const photo = p && p.photo ? '<img src="' + esc(p.photo) + '" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">' : '';
-      return '<div class="pt" style="left:' + (s.fy * 100) + '%;top:' + (100 - s.fx * 100) + '%"><i class="' + (photo ? 'ph' : '') + '" style="background:' + col + ';color:' + tc + '">' + photo + '<b>' + (i + 1) + '</b></i><span>' + esc(p ? p.short : s.pos) + '</span></div>';
+      return '<div class="pt' + (p ? ' clickable' : '') + '"' + (p ? ' data-player="' + esc(p.id) + '"' : '') + ' style="left:' + (s.fy * 100) + '%;top:' + (100 - s.fx * 100) + '%"><i class="' + (photo ? 'ph' : '') + '" style="background:' + col + ';color:' + tc + '">' + photo + '<b>' + (i + 1) + '</b></i><span>' + esc(p ? p.short : s.pos) + '</span></div>';
     }).join('');
 
     const chosen = S.lineup.map(id => id && player(id)).filter(Boolean);
