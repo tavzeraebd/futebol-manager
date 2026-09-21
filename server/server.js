@@ -794,7 +794,8 @@ const server = http.createServer((req, res) => {
 async function boot() {
   db = await store.load();
   store.attach(db);
-  catalog = load({ imported: await store.loadImported(), persist: p => store.saveImported(p) });
+  const owned = new Set(Object.values(db.clubs).flatMap(c => c.squad));
+  catalog = load({ imported: await store.loadImported(), persist: p => store.saveImported(p), keep: owned });
   XC = createExchange({ db, catalog, R, save, push, pushAll });
   // jogadores importados por outros meios (ex.: carga em massa) entram no catálogo sem reiniciar
   let since = new Date().toISOString();
