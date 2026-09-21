@@ -434,7 +434,7 @@
       let act;
       if (mine) act = '<span class="tag">No seu clube</span>';
       else if (p.owner) act = '<span class="tag">' + esc(p.owner.name) + '</span>';
-      else act = '<button class="btn primary sm" data-buy="' + esc(p.id) + '"' + (price(p) > S.me.budget ? ' disabled' : '') + ' type="button">Contratar</button> <button class="btn sm" data-auc="' + esc(p.id) + '" type="button">Leilão</button>';
+      else act = '<button class="btn primary sm" data-buy="' + esc(p.id) + '"' + (price(p) > S.me.budget ? ' disabled' : '') + ' type="button">Contratar</button>';
       return S.kind === 'coach'
         ? '<tr class="rc coach"><td class="c-name"><a href="#" class="plink" data-player="' + esc(p.id) + '">' + esc(p.name) + '</a></td><td class="c-club">' + esc(p.club) + '</td><td class="num ovr c-ovr">' + p.ovr + formTag(p) + '</td><td class="num c-price">' + money(price(p)) + '</td><td class="c-act">' + act + '</td></tr>'
         : '<tr class="rc"><td class="c-pos"><span class="pos ' + p.role + '">' + p.pos + '</span></td><td class="c-name">' + avatar(p) + '<a href="#" class="plink" data-player="' + esc(p.id) + '">' + esc(p.name) + '</a>' + (p.source === 'sofascore' ? ' <span class="tag">SS</span>' : p.source === 'wikidata' ? ' <span class="tag">WD</span>' : '') + '</td><td class="c-club">' + esc(p.club) + '</td><td class="num ovr c-ovr">' + p.ovr + '</td><td class="num c-val">' + (p.valueEstimated ? '~' : '') + money(p.value) + '</td><td class="num c-price"><b>' + money(price(p)) + '</b></td><td class="c-act">' + act + '</td></tr>' +
@@ -453,8 +453,6 @@
   $('mkTable').onclick = async e => {
     const info = e.target.closest('[data-info]');
     if (info) { e.preventDefault(); S.open = S.open === info.dataset.info ? null : info.dataset.info; renderMarket(); return; }
-    const au = e.target.closest('[data-auc]');
-    if (au) return auctionItem(au.dataset.auc);
     const b = e.target.closest('[data-buy]');
     if (!b) return;
     b.disabled = true;
@@ -1183,7 +1181,7 @@
         '<div class="muted">' + esc(a.team || '') + ' · vendedor: ' + esc(a.sellerName) + ' · valor de mercado ' + money(a.value) + '</div></div>' +
         '<div class="auc-bid"><div class="auc-price">' + money(a.bid ? a.bid.amount : a.startPrice) + '</div><div class="muted">' + (a.bid ? 'lance de ' + esc(a.bid.name) : 'preço inicial') + '</div></div>' +
         '<div class="auc-time" data-end="' + a.endsAt + '">--</div><div class="auc-act">' + bidBtn + '</div></div>';
-    }).join('') || '<p class="muted">Nenhum leilão aberto agora. Abra um pelo botão "Leiloar" no Elenco ou no Mercado.</p>';
+    }).join('') || '<p class="muted">Nenhum leilão aberto agora. Abra um pelo botão "Leiloar" na aba Elenco (só vale para jogadores e técnico do seu clube).</p>';
     $('xDone').innerHTML = xc.done.map(a => '<div class="fl">' + (a.result && a.result.sold ? '🔨 ' : '⏹ ') + esc(a.result ? a.result.text : '') + '</div>').join('') || '<span class="muted">Ainda sem leilões encerrados.</span>';
     // trocas
     const line = t => {
@@ -1257,7 +1255,7 @@
     loadExchange();
   };
   /**
-   * Tela de venda (botões "Leiloar" do Mercado e do Elenco): mostra jogadores parecidos com o valor de cada um e a faixa de preço
+   * Tela de venda (botão "Leiloar" do Elenco, só para quem já é do seu clube): mostra jogadores parecidos com o valor de cada um e a faixa de preço
    * permitida, para o dono escolher o preço inicial sem ficar muito abaixo nem muito acima do mercado.
    */
   async function auctionItem(id) {
@@ -1273,7 +1271,7 @@
     const head = '<tr><th>' + (gd.coach ? 'Técnico' : 'Jogador') + '</th><th>Pos</th><th class="num">Nota</th>' + (gd.coach ? '' : STAT.map(s => '<th class="num" title="' + { shot: 'Finalização', pass: 'Passe', dribble: 'Drible', def: 'Defesa', speed: 'Velocidade' }[s[0]] + '">' + s[1] + '</th>').join('')) + '<th class="num">Valor</th></tr>';
     const min = gd.band.min, max = gd.band.max, ref = gd.reference;
     $('pBody').innerHTML = '<h3>Vender ' + esc(gd.self.name) + '</h3>' +
-      (gd.unowned ? '<p class="muted">Este item está sem clube: o leilão começa no preço de contratação (' + money(ref) + ') ou mais, nunca abaixo. Você não pode dar lance no leilão que abriu.</p>' : '<p class="muted">Você define o preço inicial do leilão. Para o mercado ficar justo, ele precisa ficar perto da média de ' + (gd.coach ? 'técnicos' : 'jogadores com características parecidas') + '.</p>') +
+      '<p class="muted">Você define o preço inicial do leilão. Para o mercado ficar justo, ele precisa ficar perto da média de ' + (gd.coach ? 'técnicos' : 'jogadores com características parecidas') + '. Você não pode dar lance no seu próprio leilão.</p>' +
       '<div class="pgtable"><table>' + head + row(gd.self, true) + gd.neighbors.map(n => row(n, false)).join('') + '</table></div>' +
       '<div class="pgsum"><div><span>Média dos parecidos</span><b>' + money(gd.similarAverage) + '</b></div><div><span>Preço de referência</span><b>' + money(ref) + '</b></div>' +
       '<div><span>Faixa permitida</span><b>' + money(min) + ' a ' + money(max) + '</b></div></div>' +

@@ -419,13 +419,9 @@ route('GET', '/api/price-guide', (req, url) => {
   const it = catalog.item(url.searchParams.get('id'));
   if (!it) bad('Item não encontrado.', 404);
   const o = ownerOf(it.id);
-  if (o && o.id !== me.id) bad('Só o dono (' + o.name + ') pode vender esse item.', 409);
-  const g = PR.guide(catalog, it);
-  if (!o) { // sem dono: o leilão nunca começa abaixo do preço de contratação direta
-    const bank = R.buyPrice(it);
-    g.unowned = true; g.reference = bank; g.band = { min: bank, max: Math.round(bank * PR.BAND.high), low: 1, high: PR.BAND.high };
-  }
-  return g;
+  if (!o) bad(it.name + ' está no mercado e não pode ir a leilão: leilão é só para jogadores e técnico do seu clube. Contrate-o direto na aba Mercado.', 409);
+  if (o.id !== me.id) bad('Só o dono (' + o.name + ') pode vender esse item.', 409);
+  return PR.guide(catalog, it);
 });
 
 /** Ficha de um jogador ou técnico: características, nota, valor e forma. */

@@ -34,8 +34,8 @@ Para testar com 2 jogadores, abra a URL em duas abas anônimas ou em dois navega
 - Navegadores só liberam áudio depois de um clique na página; se ficar mudo, clique em qualquer lugar.
 
 ## Leilão ao vivo e trocas (aba "Leilão e trocas")
-- Qualquer jogador (ou técnico) pode ir a leilão: o dono leiloa o dele (botão "Leiloar" no Elenco) e qualquer um pode leiloar
-  quem está sem clube (botão "Leilão" no Mercado). 45 s de relógio; lance nos últimos 10 s estende o tempo. Lance mínimo sobe 5% (mín. €1M).
+- Só vai a leilão jogador (ou técnico) que já é do seu clube: o dono leiloa o dele (botão "Leiloar" no Elenco). Quem está no mercado, sem
+  clube, não pode ser leiloado por ninguém: contrata-se direto (o servidor recusa). 45 s de relógio; lance nos últimos 10 s estende o tempo. Lance mínimo sobe 5% (mín. €1M).
   O vencedor paga o valor cheio ao vendedor (sem o desconto de 25% da venda ao banco). Máx. 2 leilões abertos por clube.
 - O dinheiro dos lances vencendo fica reservado (não dá para dar lances acima do saldo em vários leilões) e vale a vaga do elenco.
 - Trocas: escolha o clube, marque quem você dá e quem recebe (até 5 de cada lado) e, se quiser, dinheiro. O outro aceita ou recusa;
@@ -113,7 +113,7 @@ as estatísticas ficam registradas em cada clube por onde passou. Nas ligas e co
 - Na tela de venda aparece a tabela de jogadores com características parecidas (mesma função, nota e habilidades próximas), o valor de
   cada um, a média e a **faixa permitida** (80% a 130% da referência, que é metade o valor do jogador e metade a média dos parecidos).
   Fora da faixa o servidor recusa. Isso impede, por exemplo, comprar jogadores em várias contas e "vender" quase de graça para a conta principal.
-- Jogador **sem clube** só vai a leilão a partir do preço de contratação (120% do valor): leilão não é atalho mais barato que a compra direta.
+- Jogador **sem clube** não vai a leilão (só o dono pode leiloar, e só o que é do próprio clube): leilão não é atalho para comprar do mercado.
   Quem abriu o leilão não pode dar lance nele.
 - **Trocas** precisam ser equilibradas: o que você entrega (jogadores + dinheiro) e o que recebe não podem diferir mais de 35% em valor de mercado
   (nada de "dar" um jogador caro por quase nada).

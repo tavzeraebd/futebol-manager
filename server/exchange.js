@@ -1,7 +1,7 @@
 /*
  * Leilão ao vivo e trocas entre amigos. Lógica separada do servidor HTTP (recebe o contexto por parâmetro).
- *  - Leilão: dono do jogador (ou qualquer um, se ele está sem clube) abre; lances em tempo real; +10s se der lance no final.
- *    O vencedor paga o valor ao vendedor (sem o desconto da venda ao banco). Sem dono, o dinheiro vai para o "banco".
+ *  - Leilão: só o dono abre, e só para jogador/técnico do PRÓPRIO clube (quem está no mercado, sem clube, se contrata direto e não vai
+ *    a leilão); lances em tempo real; +10s se der lance no final. O vencedor paga o valor ao vendedor (sem o desconto da venda ao banco).
  *  - Troca: proposta de jogadores/técnico + dinheiro entre dois clubes; o outro aceita ou recusa.
  */
 const crypto = require('crypto');
@@ -65,20 +65,17 @@ function createExchange(ctx) {
     const it = item(body.id);
     if (!it) throw err('Item não encontrado.', 404);
     const owner = ownerOf(it.id);
-    if (owner && owner.id !== club.id) throw err('Só o dono (' + owner.name + ') pode leiloar esse item.', 409);
+    if (!owner) throw err(it.name + ' está no mercado e não pode ir a leilão: leilão é só para jogadores e técnico do seu clube. Contrate-o direto na aba Mercado.', 409);
+    if (owner.id !== club.id) throw err('Só o dono (' + owner.name + ') pode leiloar esse item.', 409);
     if (liveAuctionOf(it.id)) throw err('Esse item já está em leilão.', 409);
     if ([...auctions.values()].filter(a => a.starter === club.id).length >= MAX_AUCTIONS_PER_CLUB) throw err('Você já tem ' + MAX_AUCTIONS_PER_CLUB + ' leilões abertos.');
     if (db.trades.some(t => t.status === 'pending' && (t.give.includes(it.id) || t.get.includes(it.id)))) throw err('Esse item está numa proposta de troca pendente.', 409);
     const g = PR.guide(catalog, it); // preço fica perto da média de jogadores parecidos (evita "vender" quase de graça entre contas do mesmo dono)
     const start = body.startPrice == null ? g.reference : Math.round(+body.startPrice);
     if (!Number.isFinite(start)) throw err('Preço inicial inválido.');
-    if (!owner) { // sem dono: quem compra do "banco" paga pelo menos o preço de contratação (com ágio); leilão não é atalho mais barato
-      const bank = R.buyPrice(it);
-      if (start < bank) throw err('Item sem dono: o leilão começa no preço de mercado, € ' + money(bank) + ' (o mesmo da contratação direta), ou mais.');
-      if (start > Math.round(bank * PR.BAND.high)) throw err('Preço muito acima do mercado: o máximo é € ' + money(Math.round(bank * PR.BAND.high)) + '.');
-    } else if (start < g.band.min) throw err('Preço muito abaixo da média: o mínimo é € ' + money(g.band.min) + ' (' + Math.round(g.band.low * 100) + '% da média de € ' + money(g.reference) + ' de jogadores parecidos).');
-    if (owner && start > g.band.max) throw err('Preço muito acima da média: o máximo é € ' + money(g.band.max) + ' (' + Math.round(g.band.high * 100) + '% da média de € ' + money(g.reference) + ' de jogadores parecidos).');
-    const a = { id: crypto.randomUUID(), itemId: it.id, kind: isCoach(it.id) ? 'coach' : 'player', seller: owner ? owner.id : null, starter: club.id, startPrice: start, bid: null, bids: [], createdAt: now(), endsAt: now() + AUCTION_SECONDS * 1000, status: 'live' };
+    if (start < g.band.min) throw err('Preço muito abaixo da média: o mínimo é € ' + money(g.band.min) + ' (' + Math.round(g.band.low * 100) + '% da média de € ' + money(g.reference) + ' de jogadores parecidos).');
+    if (start > g.band.max) throw err('Preço muito acima da média: o máximo é € ' + money(g.band.max) + ' (' + Math.round(g.band.high * 100) + '% da média de € ' + money(g.reference) + ' de jogadores parecidos).');
+    const a = { id: crypto.randomUUID(), itemId: it.id, kind: isCoach(it.id) ? 'coach' : 'player', seller: owner.id, starter: club.id, startPrice: start, bid: null, bids: [], createdAt: now(), endsAt: now() + AUCTION_SECONDS * 1000, status: 'live' };
     auctions.set(a.id, a);
     broadcast();
     return auctionView(a);
