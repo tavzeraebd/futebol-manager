@@ -1,0 +1,17 @@
+{
+  "name": "futebol-manager-multiplayer",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Jogo multiplayer de montar times de futebol com simulação em campo (dados no Supabase).",
+  "scripts": {
+    "start": "node server/server.js",
+    "sync": "node scripts/sync-sofascore.js",
+    "migrate": "node scripts/migrate-to-supabase.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.0"
+  }
+}

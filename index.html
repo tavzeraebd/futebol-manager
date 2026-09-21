@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Match Live · Simulador de Futebol</title>
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <main class="app">
+    <header class="card scoreboard">
+      <div class="side">
+        <div class="crest" id="crestH"></div>
+        <div class="tname" id="nameH"></div>
+        <ul class="scorers" id="scorersH"></ul>
+      </div>
+      <div class="center">
+        <div class="meta">Simulação · City Ground</div>
+        <div class="score"><span id="scoreH">0</span><i>-</i><span id="scoreA">0</span></div>
+        <div class="clock"><span class="live-dot" id="liveDot"></span><span id="clock">0'</span></div>
+        <div class="status" id="status">Pré-jogo</div>
+      </div>
+      <div class="side">
+        <div class="crest" id="crestA"></div>
+        <div class="tname" id="nameA"></div>
+        <ul class="scorers" id="scorersA"></ul>
+      </div>
+    </header>
+
+    <section class="card pitch-card">
+      <div class="pitch-wrap">
+        <canvas id="pitch"></canvas>
+        <div class="banner" id="banner" hidden></div>
+      </div>
+      <div class="controls">
+        <button id="btnPlay" class="btn primary" type="button">Pausar</button>
+        <div class="seg" id="speed" role="group" aria-label="Velocidade">
+          <button type="button" data-v="1" class="on">1x</button>
+          <button type="button" data-v="2">2x</button>
+          <button type="button" data-v="4">4x</button>
+          <button type="button" data-v="8">8x</button>
+        </div>
+        <label class="chk"><input type="checkbox" id="optNames" checked> Nomes</label>
+        <label class="chk"><input type="checkbox" id="optNums" checked> Números</label>
+        <button id="btnRestart" class="btn" type="button">Reiniciar</button>
+      </div>
+      <div class="picked" id="picked">Clique em um jogador para ver detalhes.</div>
+    </section>
+
+    <div class="grid">
+      <section class="card">
+        <h2>Estatísticas</h2>
+        <div class="stat">
+          <div class="stat-row"><b id="possH">50%</b><span>Posse de bola</span><b id="possA">50%</b></div>
+          <div class="bar"><i id="possBar"></i></div>
+        </div>
+        <div id="stats"></div>
+      </section>
+
+      <section class="card">
+        <h2>Lances</h2>
+        <ol class="feed" id="feed"></ol>
+      </section>
+
+      <section class="card lineups">
+        <h2>Escalações</h2>
+        <div class="lu">
+          <div><h3 id="luH"></h3><ul id="lineH"></ul></div>
+          <div><h3 id="luA"></h3><ul id="lineA"></ul></div>
+        </div>
+      </section>
+    </div>
+    <p class="foot">Simulação fictícia com elencos reais. Sem vínculo com o Sofascore ou com os clubes.</p>
+  </main>
+
+  <script src="js/data.js"></script>
+  <script src="js/engine.js"></script>
+  <script src="js/render.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Football Manager Online</title>
+  <link rel="stylesheet" href="css/styles.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/game.css">
+  <link rel="stylesheet" href="css/fm-theme.css">
+</head>
+<body>
+  <!-- Entrada -->
+  <main id="auth" class="auth">
+    <div class="auth-stack">
+      <div class="card auth-card" id="retryBox" hidden>
+        <h1>Reconectando…</h1>
+        <p class="muted" id="retryMsg"></p>
+        <p class="muted">Seu clube está salvo. Vou tentar de novo automaticamente.</p>
+        <button class="btn" id="retryNow" type="button">Tentar agora</button>
+      </div>
+
+      <div class="card auth-card" id="googleBox" hidden>
+        <h1>⚽ Football Manager Online</h1>
+        <p class="muted">Entre com sua conta Google para guardar seu clube e voltar de qualquer navegador.</p>
+        <div id="googleBtn"></div>
+        <p class="error" id="googleError"></p>
+      </div>
+
+      <form id="loginForm" class="card auth-card" hidden>
+        <h1>⚽ Entrar no clube</h1>
+        <label>Nome do clube<input id="loginClub" maxlength="30" required autocomplete="username"></label>
+        <label>Senha<input id="loginPass" type="password" required autocomplete="current-password"></label>
+        <button class="btn primary" type="submit">Entrar</button>
+        <p class="error" id="loginError"></p>
+        <a href="#" id="toReg" class="muted">Ainda não tenho clube — criar um</a>
+      </form>
+
+      <form id="regForm" class="card auth-card" hidden>
+        <h1 id="regTitle">⚽ Criar clube</h1>
+        <p class="muted">Monte seu clube com <b>€ 500 milhões</b>, contrate craques (valor de mercado + 20% de ágio; venda por 75%) e desafie outros técnicos.</p>
+        <label>Seu nome<input id="regManager" maxlength="30" required placeholder="Ex.: Ana Souza"></label>
+        <label>Nome do clube<input id="regClub" maxlength="30" required placeholder="Ex.: Atlético do Bairro" autocomplete="username"></label>
+        <label id="regPassLbl">Senha (para voltar depois)<input id="regPass" type="password" minlength="4" autocomplete="new-password"></label>
+        <label>Cor da camisa<input id="regColor" type="color" value="#d71920"></label>
+        <button class="btn primary" type="submit">Criar clube</button>
+        <p class="error" id="regError"></p>
+        <a href="#" id="backLink" class="muted">&larr; Já tenho clube</a>
+      </form>
+    </div>
+  </main>
+
+  <!-- Jogo -->
+  <div id="game" hidden>
+    <header class="fm-nav">
+      <div class="crest-frame"><span class="crest sm" id="tbCrest"></span></div>
+      <div class="nav-main">
+        <div class="nav-row">
+          <nav class="tabs" id="tabs">
+            <button data-tab="market" class="on" type="button">Mercado</button>
+            <button data-tab="squad" type="button">Elenco</button>
+            <button data-tab="lineup" type="button">Escalação</button>
+            <button data-tab="clubs" type="button">Clubes</button>
+            <button data-tab="leagues" type="button">Ligas</button>
+            <button data-tab="exch" type="button">Leilão e trocas</button>
+            <button data-tab="matches" type="button">Partidas</button>
+          </nav>
+          <div class="nav-right">
+            <div class="kpibox"><div><small>Saldo</small><b id="tbBudget"></b></div></div>
+            <div class="datebox"><b id="tbSource"></b><small>Fonte de dados</small></div>
+            <button class="btn primary wide" id="btnLogout" type="button">Sair</button>
+          </div>
+        </div>
+        <div class="subnav">
+          <span class="sub on" id="tbClub"></span>
+          <span class="sub" id="tbManager"></span>
+          <span class="sub">Conta: <b id="tbAccount"></b></span>
+          <span class="sub" id="linkGoogle"></span>
+          <button class="sub link" id="btnPw" type="button">Senha</button>
+        </div>
+      </div>
+    </header>
+
+    <section class="hero">
+      <div class="hero-crest"><span class="crest" id="heroCrest"></span></div>
+      <div class="hero-id">
+        <div class="hero-name" id="heroName"></div>
+        <div class="hero-sub">Portal do clube</div>
+      </div>
+      <div class="hero-stats">
+        <div><small>Elenco</small><b id="tbSquad"></b></div>
+        <div><small>Técnico do clube</small><b id="tbCoach"></b></div>
+        <div><small>Valor do elenco</small><b id="heroValue"></b></div>
+      </div>
+    </section>
+
+    <main class="page">
+      <section id="tab-market" class="card">
+        <div class="filters">
+          <div class="seg" id="mkKind"><button data-k="player" class="on" type="button">Jogadores</button><button data-k="coach" type="button">Técnicos</button></div>
+          <input id="mkSearch" type="search" placeholder="Buscar jogador (ex.: Igor)">
+          <select id="mkPos">
+            <option value="ALL">Todas posições</option><option value="GK">Goleiros</option><option value="DEF">Defensores</option>
+            <option value="MID">Meio-campistas</option><option value="FWD">Atacantes</option>
+          </select>
+          <select id="mkSort">
+            <option value="value-desc">Maior valor</option><option value="value-asc">Menor valor</option>
+            <option value="ovr-desc">Maior nota</option><option value="name">Nome</option>
+          </select>
+          <label class="chk"><input type="checkbox" id="mkFree" checked> Só disponíveis</label>
+          <label class="chk"><input type="checkbox" id="mkAfford"> Só que posso pagar</label>
+        </div>
+        <p class="muted" id="mkStatus" hidden></p>
+        <div class="table-wrap"><table class="tbl" id="mkTable"></table></div>
+        <button class="btn" id="mkMore" type="button" hidden>Mostrar mais</button>
+      </section>
+
+      <section id="tab-squad" class="card" hidden>
+        <h2>Elenco</h2>
+        <p class="muted" id="sqInfo"></p>
+        <div class="table-wrap"><table class="tbl" id="sqTable"></table></div>
+        <h2>Técnico</h2>
+        <div id="sqCoach"></div>
+      </section>
+
+      <section id="tab-lineup" class="card" hidden>
+        <div class="lineup-head">
+          <h2>Escalação</h2>
+          <label>Formação <select id="luFormation"></select></label>
+          <button class="btn" id="luAuto" type="button">Escalar automaticamente</button>
+          <span class="muted" id="luOvr"></span>
+        </div>
+        <div class="lineup-grid">
+          <div class="mini-pitch" id="luPitch"></div>
+          <div id="luSlots"></div>
+        </div>
+        <div class="tactics">
+          <h2>Tática e substituições</h2>
+          <label>Estilo de jogo <select id="tcStyle"></select></label>
+          <p class="muted" id="tcHelp"></p>
+          <div id="tcPlan"></div>
+          <form id="tcSubForm" class="inline-form">
+            <span>Aos</span><input id="tcSubMin" type="number" min="1" max="120" value="60" required><span>min: sai</span><select id="tcOut"></select><span>e entra</span><select id="tcIn"></select>
+            <button class="btn sm" type="submit">Adicionar troca</button>
+          </form>
+          <form id="tcTacForm" class="inline-form">
+            <span>Aos</span><input id="tcTacMin" type="number" min="1" max="120" value="70" required><span>min: mudar para</span><select id="tcTacStyle"></select>
+            <button class="btn sm" type="submit">Adicionar mudança</button>
+          </form>
+          <p class="muted">A troca ou mudança acontece na primeira bola parada depois do minuto combinado (o intervalo também vale). Até 5 trocas e 3 mudanças de tática.</p>
+        </div>
+      </section>
+
+      <section id="tab-clubs" class="card" hidden>
+        <div class="row-between"><h2>Clubes e classificação</h2><button class="btn primary" id="btnCpu" type="button">Amistoso contra a CPU</button></div>
+        <p class="muted">Vitória = 3 pts. Para desafiar outro técnico, ele precisa estar online e com o time escalado.</p>
+        <div class="table-wrap"><table class="tbl" id="clTable"></table></div>
+        <div class="play-box">
+          <h2>🎮 Jogar você mesmo</h2>
+          <p class="muted">Você controla o jogador mais próximo da bola. Não vale prêmio nem pontos: é treino para se divertir.</p>
+          <div class="inline-form">
+            <select id="plOpp"></select>
+            <button class="btn primary" id="plSolo" type="button">Jogar (eu controlo)</button>
+            <button class="btn" id="plDuo" type="button">2 jogadores no mesmo teclado</button>
+          </div>
+        </div>
+      </section>
+
+      <section id="tab-leagues" class="card" hidden>
+        <div id="lgHome">
+          <div class="row-between"><h2>Ligas e copas entre amigos</h2><button class="btn primary" id="lgNew" type="button">Criar liga ou copa</button></div>
+          <p class="muted">Crie uma sala e passe o código para os amigos entrarem. O dono da sala inicia a competição.</p>
+          <form id="lgJoinForm" class="inline-form">
+            <input id="lgCode" maxlength="10" placeholder="Código da sala (ex.: K7QM2X)" autocomplete="off" required>
+            <button class="btn" type="submit">Entrar com código</button>
+          </form>
+          <p class="error" id="lgError"></p>
+          <div id="lgList" class="lg-list"></div>
+        </div>
+        <div id="lgDetail" hidden></div>
+        <div class="side-box" id="lgChatBox" hidden>
+          <div class="side-title">💬 Chat da sala</div>
+          <div id="lgChat" class="vchat"></div>
+          <form id="lgChatForm" class="chat-form">
+            <input id="lgChatInput" maxlength="140" placeholder="Provoque os amigos…" autocomplete="off">
+            <button class="btn primary sm" type="submit">Enviar</button>
+          </form>
+        </div>
+      </section>
+
+      <section id="tab-exch" class="card" hidden>
+        <h2>🔨 Leilões ao vivo</h2>
+        <p class="muted">Cada leilão dura 45 s; um lance nos últimos 10 s estende o tempo. O vencedor paga ao vendedor o valor cheio do lance.</p>
+        <div id="xLive" class="auc-list"></div>
+        <div class="side-title">Encerrados</div>
+        <div id="xDone" class="vfeed"></div>
+
+        <h2 class="sp">🤝 Trocas entre clubes</h2>
+        <form id="xTradeForm" class="trade-form">
+          <select id="xTo"></select>
+          <div class="trade-cols"><div><b>Você dá</b><div id="xGive" class="chk-list"></div></div><div><b>Você recebe</b><div id="xGet" class="chk-list"></div></div></div>
+          <label>Dinheiro (milhões de €; positivo = você paga, negativo = você recebe) <input id="xCash" inputmode="decimal" placeholder="0"></label>
+          <button class="btn primary" type="submit">Enviar proposta</button>
+        </form>
+        <div id="xTrades"></div>
+      </section>
+
+      <section id="tab-matches" class="card" hidden>
+        <h2>Últimas partidas</h2>
+        <div class="table-wrap"><table class="tbl" id="mtTable"></table></div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Assistir partida -->
+  <div id="viewer" class="viewer" hidden>
+    <div class="viewer-box">
+      <div class="viewer-head">
+        <div class="vt"><span class="crest sm" id="vCrestH"></span><b id="vNameH"></b></div>
+        <div class="vscore"><span id="vScoreH">0</span> - <span id="vScoreA">0</span><small id="vClock">0'</small></div>
+        <div class="vt right"><b id="vNameA"></b><span class="crest sm" id="vCrestA"></span></div>
+      </div>
+      <div class="pitch-wrap"><canvas id="pitch"></canvas><div class="banner" id="banner" hidden></div><div class="float-layer" id="vFloat"></div></div>
+      <div class="pad" id="vPad" hidden>
+        <div class="pad-dirs"><button data-d="up" type="button">▲</button><button data-d="left" type="button">◀</button><button data-d="down" type="button">▼</button><button data-d="right" type="button">▶</button></div>
+        <div class="pad-acts"><button data-a="sprint" type="button">CORRER</button><button data-a="pass" type="button">PASSE</button><button data-a="shoot" type="button">CHUTE</button></div>
+      </div>
+      <div class="play-help" id="vHelp" hidden></div>
+      <div class="controls">
+        <button class="btn primary" id="vPlay" type="button">Pausar</button>
+        <div class="seg" id="vSpeed"><button data-v="1" class="on" type="button">1x</button><button data-v="2" type="button">2x</button><button data-v="4" type="button">4x</button><button data-v="8" type="button">8x</button></div>
+        <button class="btn" id="vSkip" type="button">Pular para o fim</button>
+        <button class="btn" id="vClose" type="button">Fechar</button>
+        <span class="tag" id="vSync" hidden></span>
+      </div>
+      <div class="pens-line" id="vPens" hidden></div>
+      <p class="result" id="vResult"></p>
+      <div class="viewer-side">
+        <div class="side-box">
+          <div class="side-title">🎙 Narração
+            <span class="opts">
+              <label class="chk"><input type="checkbox" id="vSound" checked> 🔊 Som</label>
+              <label class="chk"><input type="checkbox" id="vVoice" checked> 🗣 Voz</label>
+            </span>
+          </div>
+          <div id="vFeed" class="vfeed"></div>
+        </div>
+        <div class="side-box" id="vChatBox" hidden>
+          <div class="side-title">💬 Chat da partida</div>
+          <div id="vChat" class="vchat"></div>
+          <div id="vReact" class="react-bar"></div>
+          <div id="vTaunts" class="taunt-bar"></div>
+          <form id="vChatForm" class="chat-form">
+            <input id="vChatInput" maxlength="140" placeholder="Digite uma mensagem…" autocomplete="off">
+            <button class="btn primary sm" type="submit">Enviar</button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <dialog id="pwDialog" class="dlg">
+    <form id="pwForm" class="auth-card">
+      <h2 id="pwTitle">Senha do clube</h2>
+      <p class="muted">Use o nome do clube e esta senha para entrar de qualquer navegador.</p>
+      <label id="pwCurLbl">Senha atual<input id="pwCur" type="password" autocomplete="current-password"></label>
+      <label>Nova senha (mín. 4 caracteres)<input id="pwNew" type="password" minlength="4" required autocomplete="new-password"></label>
+      <p class="error" id="pwError"></p>
+      <div class="controls"><button class="btn primary" type="submit">Salvar</button><button class="btn" id="pwCancel" type="button">Cancelar</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="lgDialog" class="dlg">
+    <form id="lgForm" class="auth-card">
+      <h2>Nova competição</h2>
+      <label>Nome<input id="lgName" maxlength="30" required placeholder="Ex.: Liga dos Amigos"></label>
+      <label>Formato
+        <select id="lgFormat">
+          <option value="league">Liga (pontos corridos)</option>
+          <option value="cup">Copa (mata-mata, com prorrogação e pênaltis)</option>
+        </select>
+      </label>
+      <label id="lgRoundsLbl">Turnos
+        <select id="lgRounds"><option value="1">Turno único (todos se enfrentam 1 vez)</option><option value="2">Ida e volta</option></select>
+      </label>
+      <p class="muted" id="lgHint">Liga: até 12 clubes. Copa: até 16 clubes. Campeão ganha € 30 M e o vice € 10 M.</p>
+      <p class="error" id="lgFormError"></p>
+      <div class="controls"><button class="btn primary" type="submit">Criar sala</button><button class="btn" id="lgCancel" type="button">Cancelar</button></div>
+    </form>
+  </dialog>
+
+  <div id="toasts" class="toasts"></div>
+
+  <script src="js/engine.js"></script>
+  <script src="js/render.js"></script>
+  <script src="js/narrator.js"></script>
+  <script src="js/sound.js"></script>
+  <script src="js/game.js"></script>
+</body>
+</html>
