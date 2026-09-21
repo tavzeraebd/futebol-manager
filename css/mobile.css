@@ -1,0 +1,266 @@
+/*
+ * Celulares e tablets (Android e iOS). Carregado depois de game.css e fm-theme.css: só acrescenta o que muda em
+ * telas pequenas ou de toque. Telas grandes com mouse continuam como estavam.
+ *
+ * - Área segura (notch, barra de gestos do iPhone, cantos arredondados) com viewport-fit=cover + env(safe-area-inset-*).
+ * - dvh no lugar de vh (a barra de endereço do Safari/Chrome muda a altura da tela).
+ * - Campos de texto com 16 px em aparelhos de toque: abaixo disso o iOS dá zoom ao focar.
+ * - Alvos de toque de ~40 px e touch-action: manipulation (sem espera de duplo toque).
+ * - Até 900 px, ou celular deitado: cabeçalho compacto com menu e tabelas viram cartões (o botão de contratar fica à vista).
+ * - Até 720 px: o restante (escalação, leilão, fichas, partida) se reorganiza em uma coluna.
+ */
+:root {
+  --sat: env(safe-area-inset-top, 0px);
+  --sar: env(safe-area-inset-right, 0px);
+  --sab: env(safe-area-inset-bottom, 0px);
+  --sal: env(safe-area-inset-left, 0px);
+}
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; -webkit-tap-highlight-color: transparent; }
+body { padding-left: var(--sal); padding-right: var(--sar); }
+
+.m-title, .menu-btn, .only-m, .rotate-tip { display: none; }
+
+button, .btn, .seg button, .tabs button, .subtabs button, a, label, select, summary, input[type=checkbox] { touch-action: manipulation; }
+button { -webkit-user-select: none; user-select: none; }
+#pitch, .pad, .pad button { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+
+/* área segura e altura real da tela */
+.auth { min-height: 100vh; min-height: 100dvh; padding: max(16px, var(--sat)) 16px max(16px, var(--sab)); }
+.page { padding-bottom: calc(48px + var(--sab)); }
+.fm-nav { padding-top: var(--sat); }
+.viewer { overscroll-behavior: contain; padding: max(12px, var(--sat)) max(12px, var(--sar)) max(12px, var(--sab)) max(12px, var(--sal)); }
+.pmodal { padding: max(16px, var(--sat)) max(16px, var(--sar)) max(16px, var(--sab)) max(16px, var(--sal)); }
+.pbox { max-height: 92vh; max-height: 92dvh; overscroll-behavior: contain; }
+.dlg { max-height: calc(100vh - 32px); max-height: calc(100dvh - 32px); overflow: auto; }
+.toasts { right: max(12px, var(--sar)); bottom: max(12px, var(--sab)); }
+.viewer, .pmodal { -webkit-backdrop-filter: blur(3px); }
+
+/* aparelhos de toque (celular e tablet) */
+@media (pointer: coarse) {
+  .btn, .seg button { min-height: 40px; }
+  .btn.sm { min-height: 36px; padding: 6px 12px; font-size: 13px; }
+  .tabs button, .subtabs button { min-height: 40px; }
+  input:not([type=checkbox]):not([type=radio]):not([type=color]), select { min-height: 42px; }
+  input[type=checkbox] { width: 20px; height: 20px; }
+  .chk { min-height: 32px; }
+  .react-bar button { min-width: 44px; min-height: 44px; }
+  .taunt-bar button { min-height: 36px; }
+  .pad button { min-width: 60px; min-height: 60px; }
+  .pad-dirs { grid-template-columns: repeat(3, 60px); }
+  .pad-acts button { min-width: 84px; }
+  /* sem desfoque atrás do jogo: pesa em celular barato enquanto o campo anima */
+  .viewer, .pmodal { backdrop-filter: none; -webkit-backdrop-filter: none; background: rgba(4, 7, 15, .94); }
+  body { background-attachment: scroll; }
+}
+@media (hover: none) and (pointer: coarse) {
+  input, select, textarea { font-size: 16px; } /* 16 px evita o zoom automático do iOS ao focar */
+  #plDuo { display: none; } /* dois jogadores no mesmo teclado: não existe no celular */
+}
+
+/* ---------- celular, tablet em pé e celular deitado: cabeçalho compacto, filtros, cartões ---------- */
+@media (max-width: 900px), (max-height: 500px) and (pointer: coarse) {
+  h2 { font-size: 17px; }
+
+  /* cabeçalho: [escudo] [clube] [saldo] [menu] e, embaixo, as abas rolando de lado */
+  .fm-nav {
+    display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; grid-template-areas: "crest title saldo menu" "tabs tabs tabs tabs";
+    align-items: center; column-gap: 10px; row-gap: 0; padding: var(--sat) 10px 0;
+  }
+  .nav-main, .nav-row, .nav-right { display: contents; }
+  .crest-frame { grid-area: crest; width: 40px; height: 40px; margin: 6px 0; background: none; }
+  .crest-frame .crest { width: 34px; height: 34px; font-size: 11px; border-width: 2px; box-shadow: none; }
+  .m-title { display: block; grid-area: title; min-width: 0; line-height: 1.15; }
+  .m-title b { display: block; font-size: 15px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .m-title small { display: block; font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .kpibox { grid-area: saldo; padding: 2px 10px; border-width: 1.5px; text-align: right; }
+  .kpibox b { font-size: 14px; }
+  .datebox, #btnLogout { display: none; }
+  .menu-btn { display: grid; grid-area: menu; place-items: center; width: 40px; height: 40px; min-height: 0; padding: 0; font-size: 20px; line-height: 1; border-radius: 10px; }
+  .tabs {
+    grid-area: tabs; gap: 2px; margin: 0 -10px; padding: 0 10px; overflow-x: auto; -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain;
+    border-top: 1px solid rgba(255, 255, 255, .06);
+  }
+  .tabs button { font-size: 14px; line-height: 20px; letter-spacing: -.02em; padding: 10px 12px; border-bottom: 2px solid transparent; }
+  .tabs button.on { border-bottom: 2px solid var(--fm-purple); }
+
+  /* menu da conta: abre por cima do conteúdo */
+  .subnav {
+    position: absolute; top: 100%; left: 0; right: 0; display: none; flex-direction: column; align-items: stretch; gap: 0;
+    padding: 4px max(14px, var(--sar)) 10px max(14px, var(--sal)); background: #12162b; border-bottom: 1px solid var(--fm-border);
+    box-shadow: 0 14px 30px rgba(0, 0, 0, .55); font-size: 14px;
+  }
+  .fm-nav.menu-open .subnav { display: flex; }
+  .subnav .sub { padding: 11px 2px; border-bottom: 1px solid var(--line); text-align: left; }
+  .subnav .sub:last-child { border-bottom: 0; }
+  #tbClub { display: none; }
+  .subnav .only-m { display: block; color: #ff8a9b; }
+  #linkGoogle { display: block; min-height: 0; }
+  #linkGoogle:empty { display: none; }
+
+  /* faixa do clube: só as estatísticas (o escudo e o nome já estão no cabeçalho) */
+  .hero { width: calc(100% - 24px); margin-top: 12px; padding: 10px; border-radius: 14px; }
+  .hero-crest, .hero-id { display: none; }
+  .hero-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; width: 100%; margin-left: 0; }
+  .hero-stats > div { min-width: 0; padding: 6px 8px; }
+  .hero-stats small { font-size: 10px; }
+  .hero-stats b { display: block; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .page { padding: 12px 12px calc(32px + var(--sab)); }
+  .card { padding: 14px; border-radius: 14px; }
+  .tbl th, .tbl td { padding: 8px 6px; }
+
+  /* filtros do mercado */
+  .filters { gap: 8px; }
+  .filters .seg { flex: 1 1 100%; }
+  .filters .seg button { flex: 1; }
+  .filters input[type=search] { flex: 1 1 100%; }
+  .filters select { flex: 1 1 calc(50% - 4px); min-width: 0; padding-left: 10px; padding-right: 4px; text-overflow: ellipsis; }
+  .filters .chk { flex: 1 1 calc(50% - 4px); }
+  #mkMore { width: 100%; margin-top: 8px; }
+
+  /* mercado, elenco e partidas: uma linha vira um cartão (o botão de contratar fica à vista, sem rolar de lado) */
+  .table-wrap:has(> .cards) { overflow: visible; }
+  .cards, .cards tbody { display: block; width: 100%; }
+  .cards .rh { display: none; }
+  .cards tr.rc {
+    display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; grid-template-areas: "pos name ovr" "pos club price" "pos val price" "act act act";
+    column-gap: 10px; row-gap: 2px; align-items: center; margin-bottom: 8px; padding: 10px 12px;
+    border: 1px solid rgba(255, 255, 255, .09); border-radius: 12px; background: rgba(255, 255, 255, .03);
+  }
+  .cards tr.rc td { display: block; min-width: 0; padding: 0; border: 0; background: none !important; box-shadow: none !important; white-space: normal; }
+  .cards tr.rc.coach { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "name ovr" "club price" "act act"; }
+  .c-pos { grid-area: pos; align-self: start; }
+  .c-name { grid-area: name; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap !important; }
+  .c-club { grid-area: club; color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap !important; }
+  .c-ovr { grid-area: ovr; font-size: 18px; text-align: right; }
+  .c-val { grid-area: val; color: var(--muted); font-size: 12px; white-space: nowrap !important; }
+  .c-val::before { content: 'valor '; }
+  .c-price { grid-area: price; align-self: center; font-size: 15px; text-align: right; white-space: nowrap !important; }
+  .c-price::before { content: 'preço'; display: block; color: var(--muted); font-size: 11px; font-weight: 400; line-height: 1.2; }
+  .cards.sq .c-price::before { content: 'venda'; }
+  .cards.sq .c-price b { font-weight: 500; }
+  .c-act { grid-area: act; display: flex !important; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+  .c-act .btn { flex: 1 1 0; }
+  .cards tr.rc td:empty { display: none; }
+  .cards tr:not(.rc):not(.rh) { display: block; }
+  .cards tr:not(.rc):not(.rh) td { display: block; padding: 8px 0; white-space: normal; } /* "Seu elenco está vazio…" / "Nada encontrado." */
+
+  .cards.mt tr.rc { grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); grid-template-areas: "when when when" "home score away" "goals goals goals" "act act act"; row-gap: 6px; }
+  .cards.mt .c-when { grid-area: when; color: var(--muted); font-size: 12px; }
+  .cards.mt .c-home { grid-area: home; text-align: right; font-weight: 600; }
+  .cards.mt .c-score { grid-area: score; font-size: 16px; text-align: center; white-space: nowrap; }
+  .cards.mt .c-score::before { content: none; }
+  .cards.mt .c-away { grid-area: away; font-weight: 600; }
+  .cards.mt .c-goals { grid-area: goals; display: block; padding: 0; background: none; border: 0; line-height: 1.35; font-size: 12px; }
+  .cards.mt .c-goals:empty { display: none; }
+
+  /* classificação dos clubes e das ligas: só o essencial (o resto abre na ficha do clube) */
+  .t-clubs :is(th, td):is(:nth-child(3), :nth-child(6), :nth-child(7), :nth-child(8), :nth-child(10), :nth-child(11)) { display: none; }
+  .t-stand :is(th, td):is(:nth-child(5), :nth-child(6), :nth-child(7), :nth-child(8), :nth-child(9)) { display: none; }
+}
+
+/* cartões em duas colunas quando há largura (tablet em pé, celular deitado) */
+@media (min-width: 600px) and (max-width: 900px), (min-width: 600px) and (max-height: 500px) and (pointer: coarse) {
+  .cards tbody { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .cards tr.rc { margin-bottom: 0; }
+  .cards tr:not(.rc) { grid-column: 1 / -1; }
+}
+
+/* ---------- celular (até 720 px): o restante em uma coluna ---------- */
+@media (max-width: 720px) {
+  /* escalação */
+  .lineup-head { gap: 10px; }
+  .lineup-head h2 { flex: 1 1 100%; }
+  .lineup-head label { flex: 1 1 100%; justify-content: space-between; }
+  .lineup-head .btn { flex: 1 1 100%; }
+  .lineup-grid .mini-pitch { width: 100%; max-width: 420px; margin: 0 auto; }
+  .slot { grid-template-columns: 44px 30px minmax(0, 1fr); }
+  .tactics .inline-form { gap: 8px; }
+  .tactics .inline-form select { flex: 1 1 140px; min-width: 0; }
+  .tactics .inline-form input[type=number] { flex: 0 0 76px; text-transform: none; }
+  .tactics .inline-form .btn { flex: 1 1 100%; }
+  .inline-form select { flex: 1 1 160px; min-width: 0; }
+  .plan-row { gap: 6px; }
+
+  /* estatísticas */
+  .stat-grid { gap: 12px; }
+  .stat-card { padding: 10px; }
+  .stat-card .tbl th, .stat-card .tbl td { padding: 6px 4px; }
+  .stat-card .nowrap { white-space: normal; }
+  .stat-card .avatar { display: none; }
+
+  /* leilão e trocas */
+  .auc { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "main main" "bid time" "act act"; row-gap: 8px; }
+  .auc-main { grid-area: main; min-width: 0; }
+  .auc-bid { grid-area: bid; }
+  .auc-time { grid-area: time; font-size: 1.1rem; }
+  .auc-act { grid-area: act; display: flex; gap: 8px; flex-wrap: wrap; }
+  .auc-act .btn { flex: 1 1 0; }
+  .trade .acts .btn { flex: 1 1 0; }
+  .chk-list { max-height: 180px; }
+  #xDone { height: auto; max-height: 220px; } /* lista de leilões encerrados: sem altura fixa quando vazia */
+
+  /* ligas */
+  .lg-list { grid-template-columns: 1fr; }
+  .subtabs { overflow-x: auto; gap: 14px; }
+  .subtabs button { white-space: nowrap; }
+
+  /* ficha do jogador e telas de venda */
+  .pmodal { place-items: end center; }
+  .pbox, .pbox.wide { width: 100%; padding: 16px; border-radius: 16px; }
+  .phead .avatar.big { width: 60px; height: 60px; }
+  .pscore b { font-size: 28px; }
+  .pgquick .btn { flex: 1; }
+  .pgform input { font-size: 18px; }
+  .dlg { width: calc(100vw - 24px); }
+
+  /* partida */
+  .viewer { padding: max(8px, var(--sat)) max(8px, var(--sar)) max(8px, var(--sab)) max(8px, var(--sal)); }
+  .viewer-box { padding: 10px; border-radius: 14px; }
+  .viewer-head { padding: 8px 10px; gap: 6px; }
+  .vt b { font-size: 13px; }
+  .vscore { font-size: 24px; }
+  .controls { gap: 8px; }
+  #vSpeed { flex: 1 1 100%; }
+  #vSpeed button { flex: 1; }
+  .controls .btn { flex: 1 1 auto; }
+  .vfeed, .vchat { height: 200px; }
+  .side-title .opts { gap: 8px; }
+  .chat-form .btn { min-width: 76px; }
+  .float-emoji span { font-size: 30px; }
+  .toasts { left: max(12px, var(--sal)); max-width: none; }
+  .toast .acts .btn { flex: 1; }
+}
+
+/* dica para virar o celular (só em pé, em telas estreitas) */
+@media (orientation: portrait) and (max-width: 600px) {
+  .rotate-tip { display: block; margin: 6px 0 0; text-align: center; font-size: 12px; color: var(--muted); }
+}
+
+/* ---------- celular deitado: o campo ocupa a altura da tela ---------- */
+@media (orientation: landscape) and (max-height: 520px) {
+  .viewer-box { padding: 6px 8px; }
+  .viewer-head { margin-bottom: 6px; padding: 4px 10px; }
+  .vscore { font-size: 20px; }
+  .vscore small { font-size: 11px; }
+  .pitch-wrap { width: fit-content; max-width: 100%; margin: 0 auto; }
+  #pitch { width: auto; max-width: 100%; height: calc(100vh - 148px); height: calc(100dvh - 148px); aspect-ratio: 111 / 74; }
+  .controls { margin-top: 6px; justify-content: center; } /* centrada sob o campo: as laterais são da cruzeta e dos botões de ação */
+  .controls .btn { flex: 0 1 auto; }
+  #vSpeed { flex: 0 0 auto; }
+  .play-help { display: none; } /* a ajuda dos controles cabe só em pé; deitado os botões falam por si */
+  .result { margin-top: 6px; }
+  .viewer-side { margin-top: 8px; }
+  .vfeed, .vchat { height: 150px; }
+  .pmodal { place-items: center; }
+  .pbox { max-height: calc(100vh - 16px); max-height: calc(100dvh - 16px); }
+}
+/* botões do "jogar você mesmo" flutuam sobre as laterais do campo (que sobram nos dois lados) */
+@media (orientation: landscape) and (max-height: 520px) and (pointer: coarse) {
+  .pad { position: fixed; left: 0; right: 0; bottom: 0; z-index: 25; padding: 0 calc(12px + var(--sar)) calc(10px + var(--sab)) calc(12px + var(--sal)); pointer-events: none; align-items: flex-end; }
+  .pad > * { pointer-events: auto; }
+  .pad button { opacity: .82; min-width: 52px; min-height: 52px; }
+  .pad-dirs { grid-template-columns: repeat(3, 52px); gap: 5px; }
+  .pad-acts { flex-direction: column; flex-wrap: nowrap; align-items: flex-end; gap: 6px; }
+  .pad-acts button { min-width: 92px; min-height: 48px; }
+}

@@ -184,7 +184,7 @@
     showOnly(googleOk ? ['googleBox', 'loginForm'] : ['loginForm']);
     if (googleOk) {
       $('googleBtn').innerHTML = '';
-      google.accounts.id.renderButton($('googleBtn'), { theme: 'outline', size: 'large', text: 'signin_with', locale: 'pt-BR', width: 300 });
+      google.accounts.id.renderButton($('googleBtn'), { theme: 'outline', size: 'large', text: 'signin_with', locale: 'pt-BR', width: Math.max(200, Math.min(300, document.documentElement.clientWidth - 84)) });
     }
   }
   function showReg(profile) {
@@ -245,6 +245,8 @@
     if (S.catalog) $('heroValue').textContent = money(m.squad.map(player).filter(Boolean).reduce((t, p) => t + p.value, 0));
     $('tbClub').textContent = m.name;
     $('tbManager').textContent = 'Técnico: ' + m.manager;
+    $('mbClub').textContent = m.name; // barra compacta do celular
+    $('mbManager').textContent = 'Técnico: ' + m.manager;
     $('tbBudget').textContent = money(m.budget);
     $('tbSquad').textContent = m.squad.length + '/' + S.meta.squadMax;
     const c = m.coach && S.catalog && coach(m.coach);
@@ -323,11 +325,40 @@
     });
   }
 
+  /* Celular: com a tela apagada ou em outro app, a conexão em tempo real cai (no iOS, sem reconectar sozinha). Ao voltar, reabre e atualiza. */
+  let hiddenAt = 0;
+  async function resync() {
+    if (!S.me) return;
+    if (!stream || stream.readyState === 2) connect();
+    if (Date.now() - hiddenAt < 20000 || !$('viewer').hidden) return; // ausência curta: os eventos em tempo real bastam
+    try {
+      await loadCatalog();
+      S.me = (await api('GET', '/api/me')).club; renderTop();
+      showTab(S.tab);
+    } catch (_) { /* o próximo evento ou toque atualiza */ }
+  }
+  document.addEventListener('visibilitychange', () => { if (document.hidden) hiddenAt = Date.now(); else { resync(); if (!$('viewer').hidden) keepAwake(true); } });
+  window.addEventListener('pageshow', e => { if (e.persisted) resync(); });
+  window.addEventListener('online', () => resync());
+
   /* ---------- abas ---------- */
   $('tabs').onclick = e => { const b = e.target.closest('button'); if (b) showTab(b.dataset.tab); };
+  // menu da conta (celular): abre por cima do conteúdo e fecha ao tocar fora, numa aba ou numa opção
+  const setMenu = open => { $('fmNav').classList.toggle('menu-open', open); $('btnMenu').setAttribute('aria-expanded', open ? 'true' : 'false'); };
+  $('btnMenu').onclick = () => setMenu(!$('fmNav').classList.contains('menu-open'));
+  $('btnLogout2').onclick = () => { setMenu(false); $('btnLogout').click(); };
+  $('btnPw').addEventListener('click', () => setMenu(false));
+  document.addEventListener('click', e => { if (!e.target.closest('#fmNav')) setMenu(false); });
+  function centerTab() { // no celular as abas rolam de lado: mantém a aba ativa à vista
+    const tabs = $('tabs'), on = tabs.querySelector('.on');
+    if (!on || tabs.scrollWidth <= tabs.clientWidth) return;
+    const r = on.getBoundingClientRect(), t = tabs.getBoundingClientRect();
+    tabs.scrollBy({ left: r.left - t.left - (t.width - r.width) / 2, behavior: 'smooth' });
+  }
   function showTab(t) {
     S.tab = t;
     for (const b of $('tabs').children) b.classList.toggle('on', b.dataset.tab === t);
+    setMenu(false); centerTab();
     for (const id of ['market', 'squad', 'lineup', 'clubs', 'leagues', 'stats', 'exch', 'matches']) $('tab-' + id).hidden = id !== t;
     if (t === 'market') renderMarket();
     if (t === 'squad') renderSquad();
@@ -396,8 +427,8 @@
     list = list.slice(0, S.shown);
 
     const head = S.kind === 'coach'
-      ? '<tr><th>Técnico</th><th>Clube</th><th class="num">Nota</th><th class="num">Preço</th><th></th></tr>'
-      : '<tr><th>Pos</th><th>Jogador</th><th>Clube</th><th class="num">Nota</th><th class="num">Valor</th><th class="num">Preço</th><th></th></tr>';
+      ? '<tr class="rh"><th>Técnico</th><th>Clube</th><th class="num">Nota</th><th class="num">Preço</th><th></th></tr>'
+      : '<tr class="rh"><th>Pos</th><th>Jogador</th><th>Clube</th><th class="num">Nota</th><th class="num">Valor</th><th class="num">Preço</th><th></th></tr>';
     $('mkTable').innerHTML = head + list.map(p => {
       const mine = S.me.squad.includes(p.id) || S.me.coach === p.id;
       let act;
@@ -405,8 +436,8 @@
       else if (p.owner) act = '<span class="tag">' + esc(p.owner.name) + '</span>';
       else act = '<button class="btn primary sm" data-buy="' + esc(p.id) + '"' + (price(p) > S.me.budget ? ' disabled' : '') + ' type="button">Contratar</button> <button class="btn sm" data-auc="' + esc(p.id) + '" type="button">Leilão</button>';
       return S.kind === 'coach'
-        ? '<tr><td><a href="#" class="plink" data-player="' + esc(p.id) + '">' + esc(p.name) + '</a></td><td>' + esc(p.club) + '</td><td class="num ovr">' + p.ovr + formTag(p) + '</td><td class="num">' + money(price(p)) + '</td><td>' + act + '</td></tr>'
-        : '<tr><td><span class="pos ' + p.role + '">' + p.pos + '</span></td><td>' + avatar(p) + '<a href="#" class="plink" data-player="' + esc(p.id) + '">' + esc(p.name) + '</a>' + (p.source === 'sofascore' ? ' <span class="tag">SS</span>' : p.source === 'wikidata' ? ' <span class="tag">WD</span>' : '') + '</td><td>' + esc(p.club) + '</td><td class="num ovr">' + p.ovr + '</td><td class="num">' + (p.valueEstimated ? '~' : '') + money(p.value) + '</td><td class="num"><b>' + money(price(p)) + '</b></td><td>' + act + '</td></tr>' +
+        ? '<tr class="rc coach"><td class="c-name"><a href="#" class="plink" data-player="' + esc(p.id) + '">' + esc(p.name) + '</a></td><td class="c-club">' + esc(p.club) + '</td><td class="num ovr c-ovr">' + p.ovr + formTag(p) + '</td><td class="num c-price">' + money(price(p)) + '</td><td class="c-act">' + act + '</td></tr>'
+        : '<tr class="rc"><td class="c-pos"><span class="pos ' + p.role + '">' + p.pos + '</span></td><td class="c-name">' + avatar(p) + '<a href="#" class="plink" data-player="' + esc(p.id) + '">' + esc(p.name) + '</a>' + (p.source === 'sofascore' ? ' <span class="tag">SS</span>' : p.source === 'wikidata' ? ' <span class="tag">WD</span>' : '') + '</td><td class="c-club">' + esc(p.club) + '</td><td class="num ovr c-ovr">' + p.ovr + '</td><td class="num c-val">' + (p.valueEstimated ? '~' : '') + money(p.value) + '</td><td class="num c-price"><b>' + money(price(p)) + '</b></td><td class="c-act">' + act + '</td></tr>' +
           (S.open === p.id ? '<tr class="detail"><td colspan="7">' + details(p) + '</td></tr>' : '');
     }).join('') || '<tr><td>Nada encontrado.</td></tr>';
     $('mkMore').hidden = total <= S.shown;
@@ -440,8 +471,8 @@
   function renderSquad() {
     const sq = S.me.squad.map(player).filter(Boolean).sort((a, b) => ['GK', 'DEF', 'MID', 'FWD'].indexOf(a.role) - ['GK', 'DEF', 'MID', 'FWD'].indexOf(b.role) || b.ovr - a.ovr);
     $('sqInfo').textContent = sq.length + ' jogadores · valor do elenco ' + money(sq.reduce((s, p) => s + p.value, 0)) + ' · compra com ágio de ' + Math.round((S.meta.buyPremium - 1) * 100) + '%, venda por ' + Math.round(S.meta.sellRatio * 100) + '% do valor de mercado.';
-    $('sqTable').innerHTML = '<tr><th>Pos</th><th>Jogador</th><th>Clube de origem</th><th class="num">Nota</th><th class="num">Valor</th><th class="num">Venda</th><th></th></tr>' +
-      (sq.map(p => '<tr><td><span class="pos ' + p.role + '">' + p.pos + '</span></td><td>' + avatar(p) + '<a href="#" class="plink" data-player="' + esc(p.id) + '">' + esc(p.name) + '</a></td><td>' + esc(p.club) + '</td><td class="num ovr">' + p.ovr + formTag(p) + '</td><td class="num">' + money(p.value) + '</td><td class="num">' + money(p.value * S.meta.sellRatio) + '</td><td><button class="btn danger sm" data-sell="' + esc(p.id) + '" type="button">Vender</button> <button class="btn sm" data-auc="' + esc(p.id) + '" type="button">Leiloar</button></td></tr>').join('') ||
+    $('sqTable').innerHTML = '<tr class="rh"><th>Pos</th><th>Jogador</th><th>Clube de origem</th><th class="num">Nota</th><th class="num">Valor</th><th class="num">Venda</th><th></th></tr>' +
+      (sq.map(p => '<tr class="rc"><td class="c-pos"><span class="pos ' + p.role + '">' + p.pos + '</span></td><td class="c-name">' + avatar(p) + '<a href="#" class="plink" data-player="' + esc(p.id) + '">' + esc(p.name) + '</a></td><td class="c-club">' + esc(p.club) + '</td><td class="num ovr c-ovr">' + p.ovr + formTag(p) + '</td><td class="num c-val">' + money(p.value) + '</td><td class="num c-price">' + money(p.value * S.meta.sellRatio) + '</td><td class="c-act"><button class="btn danger sm" data-sell="' + esc(p.id) + '" type="button">Vender</button> <button class="btn sm" data-auc="' + esc(p.id) + '" type="button">Leiloar</button></td></tr>').join('') ||
         '<tr><td colspan="7">Seu elenco está vazio. Vá ao Mercado e contrate jogadores.</td></tr>');
     const c = S.me.coach && coach(S.me.coach);
     $('sqCoach').innerHTML = c
@@ -783,7 +814,7 @@
     if (!lgSub || !subs.some(s => s[0] === lgSub)) lgSub = subs[0][0];
     h += '<div class="subtabs">' + subs.map(s => '<button data-sub="' + s[0] + '" class="' + (s[0] === lgSub ? 'on' : '') + '" type="button">' + s[1] + '</button>').join('') + '</div>';
     if (lgSub === 'table') {
-      h += '<div class="table-wrap"><table class="tbl"><tr><th>#</th><th>Clube</th><th class="num">P</th><th class="num">J</th><th class="num">V</th><th class="num">E</th><th class="num">D</th><th class="num">GP</th><th class="num">GC</th><th class="num">SG</th></tr>' +
+      h += '<div class="table-wrap"><table class="tbl t-stand"><tr><th>#</th><th>Clube</th><th class="num">P</th><th class="num">J</th><th class="num">V</th><th class="num">E</th><th class="num">D</th><th class="num">GP</th><th class="num">GC</th><th class="num">SG</th></tr>' +
         d.standings.map((r, i) => '<tr class="' + (r.club.id === S.me.id ? 'me' : '') + '"><td>' + (i + 1) + '</td><td>' + dot(r.club) + esc(r.club.name) + '</td><td class="num"><b>' + r.pts + '</b></td><td class="num">' + r.j + '</td><td class="num">' + r.v + '</td><td class="num">' + r.e + '</td><td class="num">' + r.d + '</td><td class="num">' + r.gp + '</td><td class="num">' + r.gc + '</td><td class="num">' + r.sg + '</td></tr>').join('') + '</table></div>';
     } else if (lgSub === 'games') {
       const groups = [];
@@ -827,9 +858,9 @@
   /* ---------- partidas ---------- */
   async function loadMatches() {
     try { S.matches = (await api('GET', '/api/matches')).matches; } catch (e) { return fail(e); }
-    $('mtTable').innerHTML = '<tr><th>Quando</th><th>Casa</th><th class="num">Placar</th><th>Visitante</th><th>Gols</th><th></th></tr>' +
-      (S.matches.map(m => '<tr><td>' + new Date(m.at).toLocaleString('pt-BR') + '</td><td>' + esc(m.home.name) + '</td><td class="num"><b>' + m.score[0] + ' - ' + m.score[1] + '</b>' + (m.pens ? ' <span class="tag">(pên. ' + m.pens[0] + '-' + m.pens[1] + ')</span>' : '') + '</td><td>' + esc(m.away.name) + (m.cpu ? ' <span class="tag">(CPU)</span>' : '') + (m.league ? ' <span class="tag">· ' + esc(m.league.name) + ' — ' + esc(m.league.stage || '') + '</span>' : '') + '</td><td class="tag">' +
-        esc(m.goals.map(g => g.player + ' ' + g.min + "'").join(', ')) + '</td><td><button class="btn sm" data-w="' + m.id + '" type="button">Assistir</button></td></tr>').join('') || '<tr><td colspan="6">Nenhuma partida ainda.</td></tr>');
+    $('mtTable').innerHTML = '<tr class="rh"><th>Quando</th><th>Casa</th><th class="num">Placar</th><th>Visitante</th><th>Gols</th><th></th></tr>' +
+      (S.matches.map(m => '<tr class="rc"><td class="c-when">' + new Date(m.at).toLocaleString('pt-BR') + '</td><td class="c-home">' + esc(m.home.name) + '</td><td class="num c-score"><b>' + m.score[0] + ' - ' + m.score[1] + '</b>' + (m.pens ? ' <span class="tag">(pên. ' + m.pens[0] + '-' + m.pens[1] + ')</span>' : '') + '</td><td class="c-away">' + esc(m.away.name) + (m.cpu ? ' <span class="tag">(CPU)</span>' : '') + (m.league ? ' <span class="tag">· ' + esc(m.league.name) + ' — ' + esc(m.league.stage || '') + '</span>' : '') + '</td><td class="tag c-goals">' +
+        esc(m.goals.map(g => g.player + ' ' + g.min + "'").join(', ')) + '</td><td class="c-act"><button class="btn sm" data-w="' + m.id + '" type="button">Assistir</button></td></tr>').join('') || '<tr><td colspan="6">Nenhuma partida ainda.</td></tr>');
   }
   $('mtTable').onclick = e => { const b = e.target.closest('[data-w]'); if (b) openMatch(b.dataset.w); };
 
@@ -867,10 +898,32 @@
   $('vVoice').onchange = e => { lsSet('fm-voice', e.target.checked ? '1' : '0'); if (!e.target.checked) voiceReset(); };
   // navegadores só liberam áudio depois de um clique
   document.addEventListener('click', () => { if (!$('viewer').hidden && sfx.enabled) sfx.startCrowd(); }, { passive: true });
+  // Celular: som e voz só ligam dentro de um toque. No iOS o AudioContext nasce "suspenso" e a voz só fala depois de uma fala
+  // iniciada por toque; o primeiro toque na página destrava os dois.
+  let voiceUnlocked = false;
+  function unlockMedia() {
+    if (sfx.enabled) sfx.unlock();
+    if (!voiceUnlocked && $('vVoice').checked && 'speechSynthesis' in window && typeof SpeechSynthesisUtterance !== 'undefined') {
+      try { const u = new SpeechSynthesisUtterance(' '); u.volume = 0; u.lang = 'pt-BR'; window.speechSynthesis.speak(u); voiceUnlocked = true; } catch (_) { /* sem voz */ }
+    }
+  }
+  for (const ev of ['pointerup', 'touchend', 'click', 'keydown']) document.addEventListener(ev, unlockMedia, { passive: true });
+  // iOS: com a chave lateral em "silencioso" o Web Audio fica mudo; durante a partida pede a categoria de reprodução
+  const audioSession = type => { try { if (navigator.audioSession) navigator.audioSession.type = type; } catch (_) { /* sem suporte */ } };
+  // tela acesa durante a partida (celular)
+  let wakeLock = null;
+  async function keepAwake(on) {
+    try {
+      if (on && !wakeLock && navigator.wakeLock) {
+        wakeLock = await navigator.wakeLock.request('screen');
+        wakeLock.addEventListener('release', () => { wakeLock = null; });
+      } else if (!on && wakeLock) { const w = wakeLock; wakeLock = null; await w.release(); }
+    } catch (_) { /* sem suporte, bateria fraca ou negado: segue sem */ }
+  }
 
   // Voz sempre atrás do lance: nada de fila. Gol/apito (prio 3) e chute/defesa (2) interrompem a fala atual;
   // passes e desarmes (1) só falam se a voz estiver livre. Assim a narração acompanha a bola.
-  let voiceBusyUntil = 0;
+  let voiceBusyUntil = 0, speakRef = null;
   const voiceOk = () => 'speechSynthesis' in window && typeof SpeechSynthesisUtterance !== 'undefined';
   function voiceReset() {
     voiceBusyUntil = 0;
@@ -887,6 +940,7 @@
       const mine = voiceBusyUntil = Date.now() + 300 + text.length * 48; // estimativa; o fim real da fala libera antes
       const free = () => { if (voiceBusyUntil === mine) voiceBusyUntil = 0; };
       u.onend = free; u.onerror = free;
+      speakRef = u; // o iOS pode descartar (e nunca terminar) uma fala que ninguém referencia
       ss.speak(u);
     } catch (_) { /* sem voz: segue só com texto */ }
   }
@@ -1002,6 +1056,7 @@
     $('banner').hidden = true;
     $('viewer').hidden = false;
     document.body.style.overflow = 'hidden';
+    keepAwake(true); audioSession('playback');
     if (!renderer) renderer = new PitchRenderer($('pitch'), match, { showNames: true, showNumbers: true });
     else renderer.setMatch(match);
     renderer.resize();
@@ -1088,6 +1143,7 @@
     $('viewer').hidden = true;
     sfx.stop();
     voiceReset();
+    keepAwake(false); audioSession('auto');
     play = null; held.clear(); $('vHelp').hidden = true; $('vPad').hidden = true;
     document.body.style.overflow = '';
     cancelAnimationFrame(raf);
@@ -1313,7 +1369,10 @@
     startNarration();
     $('vSync').hidden = true; $('vChatBox').hidden = true;
     $('vHelp').hidden = false; $('vSkip').hidden = true;
-    $('vHelp').innerHTML = two
+    const touch = matchMedia('(hover: none) and (pointer: coarse)').matches;
+    $('vHelp').innerHTML = touch && !two
+      ? '<b>Você</b>: setas para mover · <b>PASSE</b> para quem está na direção que você aponta · <b>CHUTE</b> · <b>CORRER</b> (segure)'
+      : two
       ? '<b>P1</b> (' + esc(d.homeDef.name) + '): W A S D mover · Q passe · E chute · Shift correr &nbsp;|&nbsp; <b>P2</b> (' + esc(d.awayDef.name) + '): setas mover · K passe · L chute · Shift direito correr'
       : '<b>Você</b>: W A S D ou setas para mover · Q ou Espaço passe (na direção que você aponta) · E chute · Shift correr';
     $('vPad').hidden = two || !matchMedia('(pointer: coarse)').matches;
@@ -1325,6 +1384,7 @@
     $('banner').hidden = true;
     $('viewer').hidden = false;
     document.body.style.overflow = 'hidden';
+    keepAwake(true); audioSession('playback');
     if (!renderer) renderer = new PitchRenderer($('pitch'), match, { showNames: true, showNumbers: true });
     else renderer.setMatch(match);
     renderer.resize();

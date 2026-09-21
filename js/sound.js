@@ -19,9 +19,23 @@
       if (!AC) return false;
       try {
         if (!this.ctx) this.ctx = new AC();
-        if (this.ctx.state === 'suspended') this.ctx.resume();
+        // "suspended" (antes do 1º toque) ou "interrupted" (iOS, depois de ligação ou de outro app): só volta a tocar com resume()
+        if (this.ctx.state !== 'running' && this.ctx.state !== 'closed') { const p = this.ctx.resume(); if (p && p.catch) p.catch(() => {}); }
         return this.ctx.state !== 'closed';
       } catch (_) { return false; }
+    }
+
+    /** Chamado dentro de um toque/clique: no iOS e no Android o áudio só destrava assim (toca 1 amostra muda). */
+    unlock() {
+      if (!this.ensure()) return;
+      if (this._unlocked && this.ctx.state === 'running') return;
+      try {
+        const c = this.ctx, src = c.createBufferSource();
+        src.buffer = c.createBuffer(1, 1, 22050);
+        src.connect(c.destination);
+        src.start(0);
+        this._unlocked = true;
+      } catch (_) { /* ok */ }
     }
 
     _noise() {
@@ -34,7 +48,7 @@
 
     /** Torcida de fundo, contínua e baixa. */
     startCrowd() {
-      if (!this.enabled || this.crowd || !this.ensure()) return;
+      if (!this.enabled || !this.ensure() || this.crowd) return; // ensure() antes: reativa um contexto que nasceu suspenso
       const c = this.ctx, src = c.createBufferSource(), filter = c.createBiquadFilter(), gain = c.createGain();
       src.buffer = this._noise(); src.loop = true;
       filter.type = 'bandpass'; filter.frequency.value = 600; filter.Q.value = 0.5;

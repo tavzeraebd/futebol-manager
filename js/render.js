@@ -110,7 +110,8 @@
 
     drawPlayers(c) {
       const m = this.match, s = this.s;
-      const r = Math.max(8, s * 1.05);
+      const compact = this.cw < 560; // celular em pé: campo pequeno, então jogadores menores e só alguns nomes
+      const r = Math.max(compact ? 6.5 : 8, s * 1.05);
       const owner = m.ball.owner;
       const list = m.players.slice().sort((a, b) => a.y - b.y);
 
@@ -152,17 +153,18 @@
 
         if (this.opts.showNumbers) {
           c.fillStyle = gk ? col.gkNumber : col.number;
-          c.font = '700 ' + Math.round(r * 1.05) + 'px system-ui, sans-serif';
+          c.font = '700 ' + Math.max(8, Math.round(r * 1.05)) + 'px system-ui, sans-serif';
           c.textAlign = 'center'; c.textBaseline = 'middle';
           c.fillText(p.num, x, y + 0.5);
         }
       }
 
       if (this.opts.showNames) {
-        c.font = '600 ' + Math.max(10, Math.round(s * 1.1)) + 'px system-ui, sans-serif';
+        c.font = '600 ' + Math.max(compact ? 9 : 10, Math.round(s * 1.1)) + 'px system-ui, sans-serif';
         c.textAlign = 'center'; c.textBaseline = 'top';
         c.lineJoin = 'round';
         for (const p of list) {
+          if (compact && p !== owner && p !== this.selected && m.home.ctrl !== p && m.away.ctrl !== p) continue; // campo apertado: nome só de quem importa
           const x = this.X(p.x), y = this.Y(p.y) + r + 2;
           c.strokeStyle = 'rgba(0,0,0,0.65)';
           c.lineWidth = 3;

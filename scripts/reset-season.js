@@ -3,7 +3,7 @@
  * pontos nem campanha; somem partidas, ligas, trocas e a "forma" dos jogadores. As CONTAS (nome do clube, senha, login com
  * Google e sessões) são mantidas, então ninguém precisa se cadastrar de novo. O catálogo de jogadores importados não muda.
  *
- * Antes de apagar, grava um backup em data/backup-temporada-<data>.json.
+ * Antes de apagar, grava um backup em data/backup-temporada-<data>-<hora>.json (nunca sobrescreve um anterior).
  * Uso:  node scripts/reset-season.js --yes [--drop="Clube A,Clube B"]      (--drop remove clubes inteiros, ex.: de teste)
  * Rode com o servidor PARADO (ou reinicie-o logo depois): ele guarda o estado em memória e regravaria o antigo.
  */
@@ -30,7 +30,7 @@ const TABLES = ['clubs', 'club_players', 'matches', 'leagues', 'league_members',
 
   const backup = {};
   for (const t of TABLES) backup[t] = await all(t);
-  const file = path.join(__dirname, '..', 'data', 'backup-temporada-' + new Date().toISOString().slice(0, 10) + '.json');
+  const file = path.join(__dirname, '..', 'data', 'backup-temporada-' + new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-') + '.json'); // com hora: nunca sobrescreve um backup anterior
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, JSON.stringify(backup));
   console.log('Backup: ' + file + ' (' + TABLES.map(t => t + ' ' + backup[t].length).join(', ') + ')');

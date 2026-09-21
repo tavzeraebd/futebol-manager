@@ -51,6 +51,22 @@ Para testar com 2 jogadores, abra a URL em duas abas anônimas ou em dois navega
 - "2 jogadores no mesmo teclado": P1 com W A S D + Q + E + Shift; P2 com setas + K + L + Shift direito.
 - É treino: não vale prêmio nem pontos e não fica no histórico.
 
+## Celular (Android e iOS)
+O jogo funciona no navegador do celular e pode ser instalado como app (PWA): no **iPhone/iPad** abra no Safari > Compartilhar > "Adicionar à Tela de Início";
+no **Android** use o menu do Chrome > "Instalar app" (ou "Adicionar à tela inicial").
+- Layout: até 900 px (e com o celular deitado) o cabeçalho vira uma barra compacta (escudo, clube, saldo e menu ☰ com conta/senha/sair) com as abas
+  rolando de lado; Mercado, Elenco e Partidas viram cartões com o botão de contratar à vista (2 colunas no tablet). Respeita o notch e a barra de gestos
+  do iPhone (`viewport-fit=cover` + `env(safe-area-inset-*)`); campos com 16 px (o iOS não dá zoom ao digitar); alvos de toque de ~40 px.
+  Tudo isso está em `css/mobile.css`; telas grandes com mouse continuam como sempre foram.
+- Partida: em pé o campo ocupa a largura com uma dica para virar o aparelho; deitado o campo ocupa a altura da tela. No "jogar você mesmo" aparecem
+  os botões na tela (cruzeta e CORRER/PASSE/CHUTE; deitado eles flutuam nas laterais). A tela fica acesa durante a partida (Wake Lock).
+- Som e voz: o navegador só libera áudio depois de um toque; o primeiro toque na página destrava os dois. **No iPhone o áudio pode ficar mudo com a
+  chave lateral em "silencioso"** (o jogo pede a sessão de reprodução, mas versões antigas do iOS ignoram).
+- Conexão: ao sair do app e voltar (ou trocar de rede) o jogo reabre a conexão em tempo real e atualiza a aba. Com o app em segundo plano você aparece
+  como offline para os amigos (ninguém consegue te desafiar).
+- O login com Google pode falhar dentro do app instalado no iPhone (o iOS trata pop-ups de PWA de um jeito diferente do Safari; não testei em aparelho
+  real): por garantia, defina uma senha no menu ☰ e entre com o nome do clube e a senha.
+
 ## Login com Google (clube persistente)
 Sem login, o clube fica preso ao navegador (se limpar os dados, perde o acesso). Com o Google, o clube fica ligado à sua conta.
 1. Acesse https://console.cloud.google.com > crie/seleciona um projeto > "APIs e serviços" > "Tela de permissão OAuth"
@@ -105,7 +121,9 @@ as estatísticas ficam registradas em cada clube por onde passou. Nas ligas e co
 
 ## Recomeçar a temporada
 `node scripts/reset-season.js --yes` (com o servidor parado ou reiniciado logo depois) devolve todos os clubes ao saldo inicial, sem
-elenco, técnico, pontos, partidas, ligas, trocas nem forma. As contas são mantidas. Faz backup em `data/backup-temporada-*.json`.
+elenco, técnico, pontos, partidas, ligas, trocas nem forma. As contas são mantidas (cada técnico entra com o mesmo nome e senha e refaz o time do zero).
+Faz backup em `data/backup-temporada-<data>-<hora>.json` (nunca sobrescreve um anterior). `--drop="Clube A,Clube B"` remove clubes inteiros (ex.: os de teste).
+Como o servidor guarda tudo em memória, reinicie o serviço no Render logo depois (um novo deploy já reinicia).
 
 ## Dados
 - Padrão: `server/seed.js` (elencos reais, valores/notas aproximados escritos à mão).

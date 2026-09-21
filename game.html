@@ -2,10 +2,13 @@
 <html lang="pt-BR">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Football Manager Online</title>
   <link rel="manifest" href="manifest.webmanifest">
   <meta name="theme-color" content="#090f1d">
+  <meta name="color-scheme" content="dark">
+  <meta name="format-detection" content="telephone=no">
+  <style>html { background: #090f1d; }</style>
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="FM Online">
@@ -18,6 +21,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/game.css">
   <link rel="stylesheet" href="css/fm-theme.css">
+  <link rel="stylesheet" href="css/mobile.css">
 </head>
 <body>
   <!-- Entrada -->
@@ -39,7 +43,7 @@
 
       <form id="loginForm" class="card auth-card" hidden>
         <h1>⚽ Entrar no clube</h1>
-        <label>Nome do clube<input id="loginClub" maxlength="30" required autocomplete="username"></label>
+        <label>Nome do clube<input id="loginClub" maxlength="30" required autocomplete="username" autocapitalize="off" autocorrect="off" spellcheck="false"></label>
         <label>Senha<input id="loginPass" type="password" required autocomplete="current-password"></label>
         <button class="btn primary" type="submit">Entrar</button>
         <p class="error" id="loginError"></p>
@@ -62,8 +66,10 @@
 
   <!-- Jogo -->
   <div id="game" hidden>
-    <header class="fm-nav">
+    <header class="fm-nav" id="fmNav">
       <div class="crest-frame"><span class="crest sm" id="tbCrest"></span></div>
+      <div class="m-title"><b id="mbClub"></b><small id="mbManager"></small></div>
+      <button class="btn menu-btn" id="btnMenu" type="button" aria-label="Conta e opções" aria-expanded="false" aria-controls="acctPanel">☰</button>
       <div class="nav-main">
         <div class="nav-row">
           <nav class="tabs" id="tabs">
@@ -82,12 +88,13 @@
             <button class="btn primary wide" id="btnLogout" type="button">Sair</button>
           </div>
         </div>
-        <div class="subnav">
+        <div class="subnav" id="acctPanel">
           <span class="sub on" id="tbClub"></span>
           <span class="sub" id="tbManager"></span>
           <span class="sub">Conta: <b id="tbAccount"></b></span>
           <span class="sub" id="linkGoogle"></span>
           <button class="sub link" id="btnPw" type="button">Senha</button>
+          <button class="sub link only-m" id="btnLogout2" type="button">Sair</button>
         </div>
       </div>
     </header>
@@ -122,14 +129,14 @@
           <label class="chk"><input type="checkbox" id="mkAfford"> Só que posso pagar</label>
         </div>
         <p class="muted" id="mkStatus" hidden></p>
-        <div class="table-wrap"><table class="tbl" id="mkTable"></table></div>
+        <div class="table-wrap"><table class="tbl cards" id="mkTable"></table></div>
         <button class="btn" id="mkMore" type="button" hidden>Mostrar mais</button>
       </section>
 
       <section id="tab-squad" class="card" hidden>
         <h2>Elenco</h2>
         <p class="muted" id="sqInfo"></p>
-        <div class="table-wrap"><table class="tbl" id="sqTable"></table></div>
+        <div class="table-wrap"><table class="tbl cards sq" id="sqTable"></table></div>
         <h2>Técnico</h2>
         <div id="sqCoach"></div>
       </section>
@@ -172,7 +179,7 @@
         <div class="row-between"><h2>Clubes e classificação</h2><button class="btn primary" id="btnCpu" type="button" title="Só para testar a escalação: não vale pontos nem dinheiro">Testar contra a CPU</button></div>
         <p class="muted">Contra a CPU é só teste de escalação: não vale pontos nem dinheiro. Pontos e prêmios só em jogos entre jogadores.</p>
         <p class="muted">Vitória = 3 pts. Para desafiar outro técnico, ele precisa estar online e com o time escalado.</p>
-        <div class="table-wrap"><table class="tbl" id="clTable"></table></div>
+        <div class="table-wrap"><table class="tbl t-clubs" id="clTable"></table></div>
         <div class="play-box">
           <h2>🎮 Jogar você mesmo</h2>
           <p class="muted">Você controla o jogador mais próximo da bola. Não vale prêmio nem pontos: é treino para se divertir.</p>
@@ -189,7 +196,7 @@
           <div class="row-between"><h2>Ligas e copas entre amigos</h2><button class="btn primary" id="lgNew" type="button">Criar liga ou copa</button></div>
           <p class="muted">Crie uma sala e passe o código para os amigos entrarem. O dono da sala inicia a competição.</p>
           <form id="lgJoinForm" class="inline-form">
-            <input id="lgCode" maxlength="10" placeholder="Código da sala (ex.: K7QM2X)" autocomplete="off" required>
+            <input id="lgCode" maxlength="10" placeholder="Código da sala (ex.: K7QM2X)" autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false" required>
             <button class="btn" type="submit">Entrar com código</button>
           </form>
           <p class="error" id="lgError"></p>
@@ -225,7 +232,7 @@
 
       <section id="tab-matches" class="card" hidden>
         <h2>Últimas partidas</h2>
-        <div class="table-wrap"><table class="tbl" id="mtTable"></table></div>
+        <div class="table-wrap"><table class="tbl cards mt" id="mtTable"></table></div>
       </section>
     </main>
   </div>
@@ -239,6 +246,7 @@
         <div class="vt right"><b id="vNameA"></b><span class="crest sm" id="vCrestA"></span></div>
       </div>
       <div class="pitch-wrap"><canvas id="pitch"></canvas><div class="banner" id="banner" hidden></div><div class="float-layer" id="vFloat"></div></div>
+      <p class="rotate-tip">📱 Vire o celular na horizontal para ver o campo maior.</p>
       <div class="pad" id="vPad" hidden>
         <div class="pad-dirs"><button data-d="up" type="button">▲</button><button data-d="left" type="button">◀</button><button data-d="down" type="button">▼</button><button data-d="right" type="button">▶</button></div>
         <div class="pad-acts"><button data-a="sprint" type="button">CORRER</button><button data-a="pass" type="button">PASSE</button><button data-a="shoot" type="button">CHUTE</button></div>

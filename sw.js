@@ -1,6 +1,6 @@
 /* Service worker: deixa o jogo instalável e abre a casca do app mais rápido. A API e o tempo real (SSE) nunca passam pelo cache. */
-const CACHE = 'fm-shell-v1';
-const SHELL = ['/', '/game.html', '/css/styles.css', '/css/game.css', '/css/fm-theme.css', '/js/engine.js', '/js/render.js', '/js/narrator.js', '/js/sound.js', '/js/game.js', '/manifest.webmanifest', '/icons/icon-192.png'];
+const CACHE = 'fm-shell-v2';
+const SHELL = ['/', '/game.html', '/css/styles.css', '/css/game.css', '/css/fm-theme.css', '/css/mobile.css', '/js/engine.js', '/js/render.js', '/js/narrator.js', '/js/sound.js', '/js/game.js', '/manifest.webmanifest', '/icons/icon-192.png', '/icons/apple-touch-icon.png'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
