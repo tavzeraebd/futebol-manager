@@ -8,7 +8,7 @@ Para testar com 2 jogadores, abra a URL em duas abas anônimas ou em dois navega
 ## Como funciona
 - Cada clube começa com € 500 M. Contrate jogadores/técnico pelo valor de mercado (cada um pertence a um só clube).
 - Comprar custa valor de mercado + 20%; vender devolve 75%. Elenco máx. 25. Escale 11 (4-2-3-1, 4-3-3, 4-4-2, 3-5-2).
-- Desafie um clube online (ele aceita/recusa) ou jogue contra a CPU. O servidor simula com `js/engine.js`
+- Desafie um clube online (ele aceita/recusa) ou teste sua escalação contra a CPU (não vale pontos nem dinheiro; classificação e prêmios só em jogos entre jogadores). O servidor simula com `js/engine.js`
   usando uma semente; os dois clientes reproduzem a mesma partida no campo.
 - Em partidas entre dois jogadores, pausa/velocidade/pular valem para os dois ao mesmo tempo (o servidor guarda o relógio da partida). Contra a CPU e ao rever partidas antigas, os controles são só seus.
 - Nota do jogador -> habilidades no motor; a nota do técnico dá um bônus ao time inteiro.

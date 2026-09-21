@@ -103,17 +103,18 @@ function playMatch(home, awayClub, isCpu, opts = {}) {
   if (db.matches.length > 300) db.matches.shift();
   if (!isCpu && !opts.noSession) sessions.set(rec.id, { clubs: [home.id, awayClub.id], baseTick: 0, baseTime: Date.now() + START_DELAY, speed: 1, paused: false, ended: false, createdAt: Date.now(), chat: [] });
 
-  const prize = isCpu ? R.PRIZE_CPU : R.PRIZE;
-  const apply = (club, gf, ga, won) => {
-    club.played++; club.gf += gf; club.ga += ga;
-    const k = gf > ga ? 'win' : gf < ga ? 'loss' : won === true ? 'win' : won === false ? 'loss' : 'draw';
-    club.budget += prize[k];
-    if (!isCpu) club.points += k === 'win' ? 3 : k === 'draw' ? 1 : 0;
-    club[k === 'win' ? 'w' : k === 'draw' ? 'd' : 'l']++;
-  };
-  const tie = res.score[0] === res.score[1] && res.winner;
-  apply(home, res.score[0], res.score[1], tie ? res.winner === 'home' : null);
-  if (!isCpu) apply(awayClub, res.score[1], res.score[0], tie ? res.winner === 'away' : null);
+  if (!isCpu) { // amistoso contra a CPU é só teste de escalação: não muda pontos, saldo nem campanha
+    const apply = (club, gf, ga, won) => {
+      club.played++; club.gf += gf; club.ga += ga;
+      const k = gf > ga ? 'win' : gf < ga ? 'loss' : won === true ? 'win' : won === false ? 'loss' : 'draw';
+      club.budget += R.PRIZE[k];
+      club.points += k === 'win' ? 3 : k === 'draw' ? 1 : 0;
+      club[k === 'win' ? 'w' : k === 'draw' ? 'd' : 'l']++;
+    };
+    const tie = res.score[0] === res.score[1] && res.winner;
+    apply(home, res.score[0], res.score[1], tie ? res.winner === 'home' : null);
+    apply(awayClub, res.score[1], res.score[0], tie ? res.winner === 'away' : null);
+  }
 
   if (opts.league && opts.fixtureId) {
     const out = LG.recordResult(opts.league, opts.fixtureId, { matchId: rec.id, score: res.score, pens: res.pens, goals: res.goals });
@@ -713,9 +714,9 @@ route('GET', '/api/search', async (req, url) => {
 });
 
 /* ---------- HTTP ---------- */
-const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json', '.svg': 'image/svg+xml' };
-const PUBLIC_DIRS = ['js', 'css'];
-const PUBLIC_FILES = ['index.html', 'game.html'];
+const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.webmanifest': 'application/manifest+json' };
+const PUBLIC_DIRS = ['js', 'css', 'icons'];
+const PUBLIC_FILES = ['index.html', 'game.html', 'manifest.webmanifest', 'sw.js'];
 
 function serveStatic(req, res, pathname) {
   const rel = pathname === '/' ? 'game.html' : decodeURIComponent(pathname).replace(/^\/+/, '');

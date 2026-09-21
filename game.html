@@ -4,6 +4,14 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Football Manager Online</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <meta name="theme-color" content="#090f1d">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="FM Online">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
   <link rel="stylesheet" href="css/styles.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -154,7 +162,8 @@
       </section>
 
       <section id="tab-clubs" class="card" hidden>
-        <div class="row-between"><h2>Clubes e classificação</h2><button class="btn primary" id="btnCpu" type="button">Amistoso contra a CPU</button></div>
+        <div class="row-between"><h2>Clubes e classificação</h2><button class="btn primary" id="btnCpu" type="button" title="Só para testar a escalação: não vale pontos nem dinheiro">Testar contra a CPU</button></div>
+        <p class="muted">Contra a CPU é só teste de escalação: não vale pontos nem dinheiro. Pontos e prêmios só em jogos entre jogadores.</p>
         <p class="muted">Vitória = 3 pts. Para desafiar outro técnico, ele precisa estar online e com o time escalado.</p>
         <div class="table-wrap"><table class="tbl" id="clTable"></table></div>
         <div class="play-box">
@@ -298,5 +307,6 @@
   <script src="js/narrator.js"></script>
   <script src="js/sound.js"></script>
   <script src="js/game.js"></script>
+  <script>if ('serviceWorker' in navigator) addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}));</script>
 </body>
 </html>

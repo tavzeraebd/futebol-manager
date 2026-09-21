@@ -6,7 +6,6 @@ const BUY_PREMIUM = 1.2;     // clubes vendedores cobram 20% acima do valor de m
 const SELL_RATIO = 0.75;     // vende por 75% do valor de mercado
 const SQUAD_MAX = 25;
 const PRIZE = { win: 10e6, draw: 4e6, loss: 2e6 };
-const PRIZE_CPU = { win: 2e6, draw: 1e6, loss: 0 };
 const buyPrice = item => Math.round(item.value * BUY_PREMIUM);
 
 // fx: 0 = próprio gol, 1 = gol adversário; fy: 0 = topo. (equipe atacando para a direita)
@@ -146,4 +145,4 @@ function validateLineup(formation, lineup, squad, catalog, requireFull) {
   return null;
 }
 
-module.exports = { START_BUDGET, BUY_PREMIUM, buyPrice, SELL_RATIO, SQUAD_MAX, PRIZE, PRIZE_CPU, FORMATIONS, buildTeamDef, validateLineup, validatePlan, TACTICS, MAX_SUBS, MAX_TACTIC_CHANGES, skillsFor };
+module.exports = { START_BUDGET, BUY_PREMIUM, buyPrice, SELL_RATIO, SQUAD_MAX, PRIZE, FORMATIONS, buildTeamDef, validateLineup, validatePlan, TACTICS, MAX_SUBS, MAX_TACTIC_CHANGES, skillsFor };
