@@ -286,6 +286,9 @@ sup.up, sup.down { font-size: 9px; }
 .pfit { margin-bottom: 14px; }
 .pfit .fitnum { font-size: 14px; }
 .tag.rest { color: #9ecbff; }
+.tag.inj { color: #ff6b5a; font-weight: 600; }
+.pfit .alert { margin: 6px 0 0; font-size: 13px; color: #ff8a7a; }
+.mini-pitch .pt small.flag { position: absolute; top: -8px; right: 2px; font-size: 13px; line-height: 1; text-shadow: none; }
 .mini-pitch .pt em { display: block; width: 30px; height: 4px; margin: 2px auto 0; border-radius: 2px; box-shadow: 0 0 0 1px rgba(0, 0, 0, .35);
   background: linear-gradient(90deg, var(--fc) var(--c), rgba(0, 0, 0, .6) var(--c)); }
 /* ficha: parte da barra que veio do treino */

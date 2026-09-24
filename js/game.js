@@ -21,6 +21,13 @@
   const fitClass = c => (c >= 80 ? 'f-good' : c >= 55 ? 'f-mid' : 'f-low');
   const fitBar = c => '<span class="fitbar ' + fitClass(c) + '" title="Condição física ' + c + '%"><i style="width:' + c + '%"></i></span><b class="fitnum ' + fitClass(c) + '">' + c + '%</b>';
   const num1 = v => v.toLocaleString('pt-BR', { maximumFractionDigits: 1 });
+  const injTime = h => (h < 24 ? h + ' h' : Math.round(h / 24) + (Math.round(h / 24) > 1 ? ' dias' : ' dia'));
+  /** Pode entrar em campo (não está lesionado nem suspenso)? */
+  const canPlay = id => { const f = fitOf(id); return !f.inj && !f.susp; };
+  /** Etiqueta de lesão ou suspensão (vazia se o jogador pode jogar). */
+  const outTag = f => (f.inj ? ' <span class="tag inj" title="' + esc(f.injKind || 'Lesionado') + '">🚑 ' + injTime(f.inj) + '</span>'
+    : f.susp ? ' <span class="tag inj" title="Cumpre suspensão no próximo jogo oficial">🟥 suspenso</span>' : '');
+  const outText = f => (f.inj ? ' · 🚑 lesionado' : f.susp ? ' · 🟥 suspenso' : '');
   const lsGet = k => { try { return localStorage.getItem(k); } catch (_) { return null; } };
   const lsSet = (k, v) => { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch (_) { /* ignora */ } };
 
@@ -477,7 +484,7 @@
     const sq = S.me.squad.map(player).filter(Boolean).sort((a, b) => ['GK', 'DEF', 'MID', 'FWD'].indexOf(a.role) - ['GK', 'DEF', 'MID', 'FWD'].indexOf(b.role) || b.ovr - a.ovr);
     $('sqInfo').textContent = sq.length + ' jogadores · valor do elenco ' + money(sq.reduce((s, p) => s + p.value, 0)) + ' · compra com ágio de ' + Math.round((S.meta.buyPremium - 1) * 100) + '%, venda por ' + Math.round(S.meta.sellRatio * 100) + '% do valor de mercado.';
     $('sqTable').innerHTML = '<tr class="rh"><th>Pos</th><th>Jogador</th><th>Clube de origem</th><th class="num">Nota</th><th>Condição</th><th class="num">Valor</th><th class="num">Venda</th><th></th></tr>' +
-      (sq.map(p => '<tr class="rc"><td class="c-pos"><span class="pos ' + p.role + '">' + p.pos + '</span></td><td class="c-name">' + avatar(p) + '<a href="#" class="plink" data-player="' + esc(p.id) + '">' + esc(p.name) + '</a></td><td class="c-club">' + esc(p.club) + '</td><td class="num ovr c-ovr">' + p.ovr + formTag(p) + '</td><td class="c-fit">' + fitBar(fitOf(p.id).cond) + (fitOf(p.id).rest ? ' <span class="tag rest">😴</span>' : '') + '</td><td class="num c-val">' + money(p.value) + '</td><td class="num c-price">' + money(p.value * S.meta.sellRatio) + '</td><td class="c-act"><button class="btn danger sm" data-sell="' + esc(p.id) + '" type="button">Vender</button> <button class="btn sm" data-auc="' + esc(p.id) + '" type="button">Leiloar</button></td></tr>').join('') ||
+      (sq.map(p => '<tr class="rc"><td class="c-pos"><span class="pos ' + p.role + '">' + p.pos + '</span></td><td class="c-name">' + avatar(p) + '<a href="#" class="plink" data-player="' + esc(p.id) + '">' + esc(p.name) + '</a></td><td class="c-club">' + esc(p.club) + '</td><td class="num ovr c-ovr">' + p.ovr + formTag(p) + '</td><td class="c-fit">' + fitBar(fitOf(p.id).cond) + (fitOf(p.id).rest ? ' <span class="tag rest">😴</span>' : '') + outTag(fitOf(p.id)) + '</td><td class="num c-val">' + money(p.value) + '</td><td class="num c-price">' + money(p.value * S.meta.sellRatio) + '</td><td class="c-act"><button class="btn danger sm" data-sell="' + esc(p.id) + '" type="button">Vender</button> <button class="btn sm" data-auc="' + esc(p.id) + '" type="button">Leiloar</button></td></tr>').join('') ||
         '<tr><td colspan="8">Seu elenco está vazio. Vá ao Mercado e contrate jogadores.</td></tr>');
     const c = S.me.coach && coach(S.me.coach);
     $('sqCoach').innerHTML = c
@@ -533,7 +540,10 @@
     const fz = r.fitness;
     const fitHtml = !fz ? '' : '<div class="pfit"><div class="row-between"><b>Condição física</b><b class="fitnum ' + fitClass(fz.cond) + '">' + fz.cond + '%' + (fz.rest ? ' · 😴 em descanso' : '') + '</b></div>' +
       '<span class="fitbar big ' + fitClass(fz.cond) + '"><i style="width:' + fz.cond + '%"></i></span>' +
-      '<p class="muted small">Entra em campo com essa energia e cansa ao longo do jogo (cansado, corre menos e erra mais). Recupera ' + T.recovery + '% por hora, ou ' + T.restRecovery + '% em descanso.</p></div>';
+      '<p class="muted small">Entra em campo com essa energia e cansa ao longo do jogo (cansado, corre menos e erra mais). Recupera ' + T.recovery + '% por hora, ou ' + T.restRecovery + '% em descanso.</p>' +
+      (fz.inj ? '<p class="alert">🚑 Lesionado: ' + esc(fz.injKind || 'lesão') + '. Volta em ' + injTime(fz.inj) + ' (a fisioterapia tira um dia).</p>' : '') +
+      (fz.susp ? '<p class="alert">🟥 Suspenso: fica fora do próximo jogo oficial do clube.</p>' : '') +
+      (fz.yellows ? '<p class="muted small">🟨 ' + fz.yellows + ' amarelo(s) acumulado(s): com ' + T.yellowLimit + ' fica fora de um jogo.</p>' : '') + '</div>';
     const avatarBig = r.coach ? '<span class="avatar big"><i>' + esc(p.name.charAt(0)) + '</i></span>' : avatar(p).replace('avatar clickable', 'avatar big');
     const st = r.stats, tot = st && st.total;
     const chip = (label, v) => '<div><span>' + label + '</span><b>' + v + '</b></div>';
@@ -581,10 +591,12 @@
     const cf = c ? Math.max(0.8, Math.min(1.25, 1 + (c.ovr - 75) / 100)) : 0.85;
     $('trHelp').textContent = 'Cada jogador treina até ' + T.sessionsPerDay + ' vezes por dia (renova à meia-noite de Brasília) e o que ele ganha fica com ele, inclusive a nota e o valor de mercado. ' +
       'O treino gasta condição física, que volta ' + T.recovery + '% por hora (' + T.restRecovery + '% em descanso). Uma partida inteira gasta cerca de 25% a 30%, e quem entra em campo cansado corre menos e erra mais. ' +
-      'A fisioterapia devolve ' + T.physio + '% na hora (1 vez por dia; custa ' + Math.round(T.physioRatio * 100) + '% do valor do jogador).';
+      'A fisioterapia devolve ' + T.physio + '% na hora (1 vez por dia; custa ' + Math.round(T.physioRatio * 100) + '% do valor do jogador) e tira um dia de lesão. ' +
+      'Lesionado não treina nem joga; vermelho ou ' + T.yellowLimit + ' amarelos acumulados deixam o jogador fora do próximo jogo oficial.';
     $('trIntHelp').textContent = it.label + ': cerca de +' + num1(it.gain * cf) + ' por sessão (rende menos perto do máximo de +' + T.trainMax + '), gasta ' + it.cost + '% de condição e pede pelo menos ' + it.min + '%. ' +
       (c ? 'Seu técnico (' + c.short + ', nota ' + c.ovr + ') ' + (cf >= 1 ? 'aumenta' : 'reduz') + ' o ganho em ' + Math.round(Math.abs(cf - 1) * 100) + '%.' : 'Sem técnico, o treino rende 15% menos.') +
-      ' Até 21 anos o jogador evolui 30% mais rápido; depois dos 30, mais devagar.';
+      ' Até 21 anos o jogador evolui 30% mais rápido; depois dos 30, mais devagar.' +
+      (trIntensity === 'hard' ? ' Cuidado: treino forte pode machucar (2% de chance; 8% se o jogador terminar abaixo de 35%).' : '');
     const xi = S.me.lineup.filter(id => id && S.me.squad.includes(id));
     const avg = xi.length ? Math.round(xi.reduce((t, id) => t + fitOf(id).cond, 0) / xi.length) : null;
     const resting = sq.filter(p => fitOf(p.id).rest).length, left = sq.reduce((t, p) => t + fitOf(p.id).left, 0);
@@ -593,7 +605,7 @@
       (sq.map(p => {
         const f = fitOf(p.id), tr = p.train || {}, on = trSel.has(p.id);
         const gains = Object.keys(ABBR).filter(k => tr[k]).map(k => '<span class="gchip" title="' + T.focus[k] + '">' + ABBR[k] + ' +' + num1(tr[k]) + '</span>').join('') || '<span class="muted small">ainda não treinou</span>';
-        const tags = (S.me.lineup.includes(p.id) ? ' <span class="tag">Titular</span>' : '') + (f.rest ? ' <span class="tag rest">😴 Descansando</span>' : '');
+        const tags = (S.me.lineup.includes(p.id) ? ' <span class="tag">Titular</span>' : '') + (f.rest ? ' <span class="tag rest">😴 Descansando</span>' : '') + outTag(f);
         return '<tr class="rc' + (on ? ' sel' : '') + '" data-row="' + esc(p.id) + '"><td class="c-chk"><input type="checkbox" data-pick="' + esc(p.id) + '"' + (on ? ' checked' : '') + ' aria-label="Selecionar ' + esc(p.name) + '"></td>' +
           '<td class="c-name"><span class="pos ' + p.role + '">' + p.pos + '</span> ' + avatar(p) + '<a href="#" class="plink" data-player="' + esc(p.id) + '">' + esc(p.name) + '</a>' + tags + '</td>' +
           '<td class="c-fit">' + fitBar(f.cond) + '</td>' +
@@ -607,7 +619,7 @@
   /** Botões de ação com a quantidade de marcados (e o preço da fisioterapia). */
   function renderTrainActs() {
     const ids = [...trSel], n = ids.length;
-    const cost = ids.map(player).filter(p => p && fitOf(p.id).physio && fitOf(p.id).cond < 100).reduce((t, p) => t + physioCost(p), 0);
+    const cost = ids.map(player).filter(p => p && fitOf(p.id).physio && (fitOf(p.id).cond < 100 || fitOf(p.id).inj)).reduce((t, p) => t + physioCost(p), 0);
     const allResting = n && ids.every(id => fitOf(id).rest);
     $('trGo').textContent = 'Treinar' + (n ? ' (' + n + ')' : '');
     $('trRest').textContent = (allResting ? 'Tirar do descanso' : 'Descansar') + (n ? ' (' + n + ')' : '');
@@ -638,7 +650,7 @@
     trSel.clear();
     for (const p of trSquad()) {
       const f = fitOf(p.id), xi = S.me.lineup.includes(p.id);
-      if (k === 'all' || (k === 'xi' && xi) || (k === 'bench' && !xi) || (k === 'ready' && f.left > 0 && f.cond >= it.min) || (k === 'tired' && f.cond < 60)) trSel.add(p.id);
+      if (k === 'all' || (k === 'xi' && xi) || (k === 'bench' && !xi) || (k === 'ready' && f.left > 0 && f.cond >= it.min && !f.inj) || (k === 'tired' && (f.cond < 60 || f.inj))) trSel.add(p.id);
     }
     renderTrain();
   };
@@ -660,7 +672,9 @@
     S.me = r.club; patchPlayers(r.players);
     const F = S.meta.training.focus;
     const list = r.done.slice(0, 6).map(d => '<b>' + esc(d.name) + '</b> ' + F[d.focus] + ' +' + num1(d.gain)).join(' · ') + (r.done.length > 6 ? ' e mais ' + (r.done.length - 6) : '');
-    toast('🏋️ Treino feito: ' + list + (r.skipped.length ? '<br><small>Não treinaram: ' + r.skipped.slice(0, 3).map(esc).join(' ') + (r.skipped.length > 3 ? ' (e mais ' + (r.skipped.length - 3) + ')' : '') + '</small>' : ''));
+    const hurt = r.done.filter(d => d.injury);
+    toast('🏋️ Treino feito: ' + list + (hurt.length ? '<br>🚑 Machucou no treino: ' + hurt.map(d => '<b>' + esc(d.name) + '</b> (' + esc(d.injKind) + ', ' + d.injury + (d.injury > 1 ? ' dias' : ' dia') + ')').join(', ') : '') +
+      (r.skipped.length ? '<br><small>Não treinaram: ' + r.skipped.slice(0, 3).map(esc).join(' ') + (r.skipped.length > 3 ? ' (e mais ' + (r.skipped.length - 3) + ')' : '') + '</small>' : ''), hurt.length ? { sticky: true } : undefined);
   });
   $('trRest').onclick = () => trainAct($('trRest'), async () => {
     const ids = [...trSel], on = !ids.every(id => fitOf(id).rest);
@@ -669,14 +683,14 @@
   });
   $('trPhysio').onclick = () => {
     const T = S.meta.training;
-    const list = [...trSel].map(player).filter(p => p && fitOf(p.id).physio && fitOf(p.id).cond < 100);
+    const list = [...trSel].map(player).filter(p => p && fitOf(p.id).physio && (fitOf(p.id).cond < 100 || fitOf(p.id).inj));
     if (!list.length) return toast('Nenhum dos marcados precisa (ou ainda pode) fazer fisioterapia hoje.', { err: true });
     const cost = list.reduce((t, p) => t + physioCost(p), 0);
     if (!confirm('Fisioterapia para ' + list.length + ' jogador(es) por ' + money(cost) + '? Cada um recupera ' + T.physio + '% de condição na hora.')) return;
     trainAct($('trPhysio'), async () => {
       const r = await api('POST', '/api/physio', { ids: list.map(p => p.id) });
       S.me = r.club;
-      toast('💆 Fisioterapia (' + money(r.cost) + '): ' + r.done.map(d => '<b>' + esc(d.name) + '</b> ' + d.cond + '%').join(' · '));
+      toast('💆 Fisioterapia (' + money(r.cost) + '): ' + r.done.map(d => '<b>' + esc(d.name) + '</b> ' + d.cond + '%' + (d.inj ? ' (lesão: mais ' + injTime(d.inj) + ')' : '')).join(' · '));
     });
   };
 
@@ -712,9 +726,9 @@
       '<div><h3>' + esc(c.name) + '</h3><div class="muted">Técnico ' + esc(c.manager) + (c.online ? ' · <span class="up">online</span>' : '') + (d.coach ? ' · comandante ' + esc(d.coach.name) : '') + '</div></div></div>' +
       '<div class="pfacts">' + chip('Pontos', c.points) + chip('Jogos', c.played) + chip('V / E / D', c.w + ' / ' + c.d + ' / ' + c.l) + chip('Gols pró / contra', c.gf + ' / ' + c.ga) + chip('Elenco', c.squadSize) + chip('Valor do elenco', money(c.squadValue)) + '</div>' +
       '<div class="pstat"><b>Elenco e estatísticas pelo clube</b>' +
-      (d.squad.length ? '<div class="pgtable"><table class="tbl"><tr><th>Jogador</th><th>Pos</th><th class="num">Nota</th><th class="num" title="Jogos">J</th><th class="num" title="Gols">G</th><th class="num" title="Assistências">A</th><th class="num" title="Gols + assistências">G+A</th><th class="num" title="Jogos sem sofrer gol (goleiro e defensores)">SSG</th><th class="num" title="Cartões amarelos">CA</th></tr>' +
-        d.squad.map(x => '<tr' + (x.inLineup ? ' class="me"' : '') + '><td class="nowrap">' + playerLink(x.player) + '</td><td><span class="pos ' + x.player.role + '">' + x.player.pos + '</span></td><td class="num ovr">' + x.player.ovr + '</td><td class="num">' + x.stats.apps + '</td><td class="num">' + x.stats.goals + '</td><td class="num">' + x.stats.assists + '</td><td class="num"><b>' + x.stats.ga + '</b></td><td class="num">' + x.stats.cleanSheets + '</td><td class="num">' + x.stats.yellows + '</td></tr>').join('') +
-        '<tr><td colspan="3"><b>Total do clube</b></td><td class="num">—</td><td class="num"><b>' + t.goals + '</b></td><td class="num"><b>' + t.assists + '</b></td><td class="num"><b>' + t.ga + '</b></td><td class="num">—</td><td class="num">' + t.yellows + '</td></tr></table></div><p class="muted small">Linhas destacadas: titulares da escalação atual. As estatísticas contam só o que o jogador fez por este clube.</p>'
+      (d.squad.length ? '<div class="pgtable"><table class="tbl"><tr><th>Jogador</th><th>Pos</th><th class="num">Nota</th><th class="num" title="Jogos">J</th><th class="num" title="Gols">G</th><th class="num" title="Assistências">A</th><th class="num" title="Gols + assistências">G+A</th><th class="num" title="Jogos sem sofrer gol (goleiro e defensores)">SSG</th><th class="num" title="Cartões amarelos">CA</th><th class="num" title="Cartões vermelhos">CV</th></tr>' +
+        d.squad.map(x => '<tr' + (x.inLineup ? ' class="me"' : '') + '><td class="nowrap">' + playerLink(x.player) + '</td><td><span class="pos ' + x.player.role + '">' + x.player.pos + '</span></td><td class="num ovr">' + x.player.ovr + '</td><td class="num">' + x.stats.apps + '</td><td class="num">' + x.stats.goals + '</td><td class="num">' + x.stats.assists + '</td><td class="num"><b>' + x.stats.ga + '</b></td><td class="num">' + x.stats.cleanSheets + '</td><td class="num">' + x.stats.yellows + '</td><td class="num">' + x.stats.reds + '</td></tr>').join('') +
+        '<tr><td colspan="3"><b>Total do clube</b></td><td class="num">—</td><td class="num"><b>' + t.goals + '</b></td><td class="num"><b>' + t.assists + '</b></td><td class="num"><b>' + t.ga + '</b></td><td class="num">—</td><td class="num">' + t.yellows + '</td><td class="num">' + t.reds + '</td></tr></table></div><p class="muted small">Linhas destacadas: titulares da escalação atual. As estatísticas contam só o que o jogador fez por este clube.</p>'
         : '<p class="muted small">Este clube ainda não tem jogadores.</p>') + '</div>';
   }
 
@@ -729,20 +743,22 @@
       const opts = squad.filter(p => (s.pos === 'GK') === (p.pos === 'GK')).sort((a, b) => (b.role === s.role) - (a.role === s.role) || b.ovr - a.ovr);
       const cur = S.lineup[i] && player(S.lineup[i]);
       return '<div class="slot"><span class="pos ' + s.role + '">' + s.pos + '</span>' + (cur ? avatar(cur) : '<span class="avatar"></span>') + '<select data-slot="' + i + '"><option value="">— vazio —</option>' +
-        opts.map(p => '<option value="' + esc(p.id) + '"' + (S.lineup[i] === p.id ? ' selected' : '') + '>' + esc(p.name) + ' · ' + fitOf(p.id).cond + '% (' + p.pos + ' · ' + p.ovr + (p.role !== s.role && s.pos !== 'GK' ? ' · fora de posição' : '') + ')</option>').join('') + '</select></div>';
+        opts.map(p => '<option value="' + esc(p.id) + '"' + (S.lineup[i] === p.id ? ' selected' : '') + '>' + esc(p.name) + ' · ' + fitOf(p.id).cond + '%' + outText(fitOf(p.id)) + ' (' + p.pos + ' · ' + p.ovr + (p.role !== s.role && s.pos !== 'GK' ? ' · fora de posição' : '') + ')</option>').join('') + '</select></div>';
     }).join('');
 
     const col = S.me.color, tc = textColor(col);
     $('luPitch').innerHTML = slots.map((s, i) => {
       const p = S.lineup[i] && player(S.lineup[i]);
       const photo = p && p.photo ? '<img src="' + esc(p.photo) + '" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">' : '';
-      return '<div class="pt' + (p ? ' clickable' : '') + '"' + (p ? ' data-player="' + esc(p.id) + '"' : '') + ' style="left:' + (s.fy * 100) + '%;top:' + (100 - s.fx * 100) + '%"><i class="' + (photo ? 'ph' : '') + '" style="background:' + col + ';color:' + tc + '">' + photo + '<b>' + (i + 1) + '</b></i><span>' + esc(p ? p.short : s.pos) + '</span>' + (p ? '<em class="' + fitClass(fitOf(p.id).cond) + '" style="--c:' + fitOf(p.id).cond + '%" title="Condição física ' + fitOf(p.id).cond + '%"></em>' : '') + '</div>';
+      return '<div class="pt' + (p ? ' clickable' : '') + '"' + (p ? ' data-player="' + esc(p.id) + '"' : '') + ' style="left:' + (s.fy * 100) + '%;top:' + (100 - s.fx * 100) + '%"><i class="' + (photo ? 'ph' : '') + '" style="background:' + col + ';color:' + tc + '">' + photo + '<b>' + (i + 1) + '</b></i><span>' + esc(p ? p.short : s.pos) + '</span>' + (p ? '<em class="' + fitClass(fitOf(p.id).cond) + '" style="--c:' + fitOf(p.id).cond + '%" title="Condição física ' + fitOf(p.id).cond + '%"></em>' + (canPlay(p.id) ? '' : '<small class="flag" title="Não joga: entra o melhor reserva">' + (fitOf(p.id).inj ? '🚑' : '🟥') + '</small>') : '') + '</div>';
     }).join('');
 
     const chosen = S.lineup.map(id => id && player(id)).filter(Boolean);
     const avg = chosen.length ? Math.round(chosen.reduce((s, p) => s + p.ovr, 0) / chosen.length) : 0;
     const cond = chosen.length ? Math.round(chosen.reduce((s, p) => s + fitOf(p.id).cond, 0) / chosen.length) : 0;
-    $('luOvr').textContent = chosen.length + '/11 escalados · nota média ' + avg + (chosen.length ? ' · condição média ' + cond + '%' : '');
+    const out = chosen.filter(p => !canPlay(p.id)).length;
+    $('luOvr').textContent = chosen.length + '/11 escalados · nota média ' + avg + (chosen.length ? ' · condição média ' + cond + '%' : '') +
+      (out ? ' · ⚠ ' + out + ' lesionado(s)/suspenso(s): na hora do jogo entra o melhor reserva da posição' : '');
     renderTactics();
   }
 
@@ -761,9 +777,9 @@
     $('tcTacStyle').innerHTML = opts('attack');
     $('tcHelp').textContent = TAC_HELP[me.tactic || 'balanced'] || '';
     const slots = S.meta.formations[S.formation];
-    $('tcOut').innerHTML = S.lineup.map((id, i) => i > 0 && id ? '<option value="' + i + '">' + esc((player(id) || {}).short || '?') + ' (' + slots[i].pos + ' · ' + fitOf(id).cond + '%)</option>' : '').join('');
+    $('tcOut').innerHTML = S.lineup.map((id, i) => i > 0 && id ? '<option value="' + i + '">' + esc((player(id) || {}).short || '?') + ' (' + slots[i].pos + ' · ' + fitOf(id).cond + '%' + outText(fitOf(id)) + ')</option>' : '').join('');
     const bench = S.me.squad.map(player).filter(p => p && p.pos !== 'GK' && !S.lineup.includes(p.id)).sort((a, b) => b.ovr - a.ovr);
-    $('tcIn').innerHTML = bench.map(p => '<option value="' + esc(p.id) + '">' + esc(p.short) + ' (' + p.pos + ' · ' + p.ovr + ' · ' + fitOf(p.id).cond + '%)</option>').join('') || '<option value="">Sem reservas no elenco</option>';
+    $('tcIn').innerHTML = bench.map(p => '<option value="' + esc(p.id) + '">' + esc(p.short) + ' (' + p.pos + ' · ' + p.ovr + ' · ' + fitOf(p.id).cond + '%' + outText(fitOf(p.id)) + ')</option>').join('') || '<option value="">Sem reservas no elenco</option>';
     const plan = me.plan || [];
     $('tcPlan').innerHTML = plan.map((e, i) => {
       let txt;
@@ -822,7 +838,7 @@
       for (const p of pool) {
         if (used.has(p.id) || (s.pos === 'GK') !== (p.pos === 'GK')) continue;
         // cansado rende menos em campo: a escalação automática prefere quem está descansado
-        const sc = (s.pos === 'GK' ? p.ovr : p.ovr * (p.pos === s.pos ? 1.05 : p.role === s.role ? 1 : 0.85)) * (0.7 + 0.3 * fitOf(p.id).cond / 100);
+        const sc = (s.pos === 'GK' ? p.ovr : p.ovr * (p.pos === s.pos ? 1.05 : p.role === s.role ? 1 : 0.85)) * (0.7 + 0.3 * fitOf(p.id).cond / 100) * (canPlay(p.id) ? 1 : 0.01);
         if (sc > bs) { bs = sc; best = p; }
       }
       if (best) used.add(best.id);

@@ -218,14 +218,16 @@ function createStore() {
     return new Map((await all('player_training', q => q.order('player_id'))).map(r => {
       const gains = {};
       for (const k of TRAIN_KEYS) if (r[k]) gains[k] = r[k];
-      return [r.player_id, { gains, fit: r.fit, fitAt: ms(r.fit_at), rest: r.resting, day: r.day, sessions: r.sessions, physioDay: r.physio_day }];
+      return [r.player_id, { gains, fit: r.fit, fitAt: ms(r.fit_at), rest: r.resting, day: r.day, sessions: r.sessions, physioDay: r.physio_day,
+        injUntil: r.inj_until ? ms(r.inj_until) : 0, injKind: r.inj_kind, susp: r.susp || 0, yellows: r.yellows || 0 }];
     }));
   }
   let trainChain = Promise.resolve(); // em fila: a gravação mais nova de um jogador nunca é passada para trás por uma antiga
   function saveTraining(rows) { // rows: [[id, estado]]
     if (!rows.length) return;
     const data = rows.map(([id, s]) => {
-      const r = { player_id: id, fit: s.fit, fit_at: iso(s.fitAt), resting: !!s.rest, day: s.day, sessions: s.sessions, physio_day: s.physioDay, updated_at: new Date().toISOString() };
+      const r = { player_id: id, fit: s.fit, fit_at: iso(s.fitAt), resting: !!s.rest, day: s.day, sessions: s.sessions, physio_day: s.physioDay,
+        inj_until: s.injUntil ? iso(s.injUntil) : null, inj_kind: s.injUntil ? s.injKind : null, susp: s.susp || 0, yellows: s.yellows || 0, updated_at: new Date().toISOString() };
       for (const k of TRAIN_KEYS) r[k] = s.gains[k] || 0;
       return r;
     });

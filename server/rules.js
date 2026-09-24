@@ -122,16 +122,24 @@ function gkColor(shirt) {
 /**
  * Constrói a definição de time que o motor (Match) espera. `cond(id)`: condição física (0-100) de cada jogador; o motor começa
  * a partida com a energia do jogador igual a ela (fit) e o faz cansar no ritmo `sta`.
+ * opts.bench: ids dos reservas disponíveis (entram sozinhos no lugar de quem se machucar); opts.injuries: a partida tem lesões
+ * (só as oficiais); opts.skip: ids que não podem entrar (lesionados/suspensos) nas trocas planejadas.
+ * v: versão das regras (6 = cartão vermelho, lesões e troca automática do lesionado).
  */
-function buildTeamDef(club, lineup, formation, catalog, cond = () => 100) {
+function buildTeamDef(club, lineup, formation, catalog, cond = () => 100, opts = {}) {
   const slots = FORMATIONS[formation];
   const coach = club.coach ? catalog.coachById.get(club.coach) : null;
   const shirt = club.color || '#d71920';
   const number = textColor(shirt);
+  const bench = (opts.bench || []).map(id => catalog.playerById.get(id)).filter(Boolean).map((p, i) => {
+    const { skill, speed, sta } = skillsFor(p, p.role, coach);
+    return { num: 12 + i, id: p.id, name: p.name, short: p.short, role: p.role, pos: p.pos, skill, speed, sta, fit: fitOf(cond, p.id), ovr: p.ovr };
+  });
   return {
+    v: 6, injuries: !!opts.injuries,
     name: club.name,
     tactic: TACTICS[club.tactic] ? club.tactic : 'balanced',
-    plan: buildPlan(club, lineup, formation, coach, catalog, cond),
+    plan: buildPlan(club, lineup, formation, coach, catalog, cond, opts.skip, bench),
     short: club.name.replace(/[^A-Za-zÀ-ú ]/g, '').split(' ').filter(Boolean).map(w => w[0]).join('').slice(0, 3).toUpperCase() || 'CLB',
     formation,
     coach: coach ? coach.name : null,
@@ -139,23 +147,25 @@ function buildTeamDef(club, lineup, formation, catalog, cond = () => 100) {
     players: slots.map((s, i) => {
       const p = catalog.playerById.get(lineup[i]);
       const { skill, speed, sta } = skillsFor(p, s.role, coach);
-      return { num: i + 1, name: p.name, short: p.short, role: s.role, pos: s.pos, fx: s.fx, fy: s.fy, skill, speed, sta, fit: fitOf(cond, p.id), ovr: p.ovr };
-    })
+      return { num: i + 1, id: p.id, name: p.name, short: p.short, role: s.role, pos: s.pos, fx: s.fx, fy: s.fy, skill, speed, sta, fit: fitOf(cond, p.id), ovr: p.ovr };
+    }),
+    bench
   };
 }
 
 const fitOf = (cond, id) => +(clamp(cond(id), 0, 100) / 100).toFixed(2);
 
 /** Plano de jogo: trocas e mudanças de tática nos minutos combinados (entradas inválidas são ignoradas). */
-function buildPlan(club, lineup, formation, coach, catalog, cond) {
+function buildPlan(club, lineup, formation, coach, catalog, cond, skip, bench) {
   const slots = FORMATIONS[formation], out = [];
   let n = 0;
   for (const e of club.plan || []) {
     if (e.type === 'tactic') { if (TACTICS[e.style]) out.push({ min: e.min, type: 'tactic', style: e.style }); continue; }
     const slot = slots[e.out], p = catalog.playerById.get(e.in);
-    if (!slot || e.out < 1 || !p || p.pos === 'GK' || !club.squad.includes(p.id) || lineup.includes(p.id)) continue;
+    if (!slot || e.out < 1 || !p || p.pos === 'GK' || !club.squad.includes(p.id) || lineup.includes(p.id) || (skip && skip.has(p.id))) continue;
     const { skill, speed, sta } = skillsFor(p, slot.role, coach);
-    out.push({ min: e.min, type: 'sub', out: e.out, in: { num: 12 + n++, name: p.name, short: p.short, skill, speed, sta, fit: fitOf(cond, p.id), ovr: p.ovr } });
+    const b = bench && bench.find(x => x.id === p.id); // mesmo número de camisa do banco
+    out.push({ min: e.min, type: 'sub', out: e.out, in: { num: b ? b.num : 30 + n++, id: p.id, name: p.name, short: p.short, skill, speed, sta, fit: fitOf(cond, p.id), ovr: p.ovr } });
   }
   return out;
 }

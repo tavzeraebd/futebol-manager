@@ -11,7 +11,11 @@
  * volta com o tempo (RECOVERY por hora, ou REST_RECOVERY em descanso). A fisioterapia devolve PHYSIO de uma vez (paga, 1 vez
  * por dia). Na partida o jogador começa com a energia igual à condição e cansa ao longo do jogo (js/engine.js).
  *
- * Estado de um jogador: { gains: { shot, pass, ... }, fit, fitAt, rest, day, sessions, physioDay }
+ * Lesões e suspensões: quem se machuca numa partida oficial fica de 1 a 6 dias fora (tempo real); treino forte com o jogador
+ * cansado também pode machucar (1 ou 2 dias). Cartão vermelho ou 3 amarelos acumulados = fora do próximo jogo oficial do clube.
+ * Lesionado não treina nem joga; suspenso não joga. Quem estiver escalado assim é trocado na hora do jogo pelo melhor reserva.
+ *
+ * Estado de um jogador: { gains: { shot, pass, ... }, fit, fitAt, rest, day, sessions, physioDay, injUntil, injKind, susp, yellows }
  * (fit = condição no instante fitAt; a condição atual soma a recuperação desde então).
  */
 const FOCUS = { shot: 'Finalização', pass: 'Passe', dribble: 'Drible', def: 'Defesa', speed: 'Velocidade', stamina: 'Resistência' };
@@ -30,6 +34,10 @@ const PHYSIO = 30;             // fisioterapia: condição devolvida na hora
 const PHYSIO_RATIO = 0.02, PHYSIO_MIN = 1e6; // preço: 2% do valor de mercado (mínimo € 1 M)
 const MATCH_COST = 75;         // condição perdida por unidade de energia gasta em campo (90 min ≈ 25 a 30; meio-campo corre mais)
 const TZ_OFFSET = 3 * 3600e3;  // Brasília (UTC-3): quando o dia vira
+const DAY = 24 * 3600e3;
+const YELLOW_LIMIT = 3;        // amarelos acumulados que dão suspensão
+const TRAIN_INJURY = { base: 0.02, tired: 0.06, below: 35 }; // treino forte: chance de lesão (maior se terminar abaixo de 35%)
+const INJURY_KINDS = ['lesão muscular na coxa', 'entorse no tornozelo', 'pancada no joelho', 'dores nas costas', 'estiramento na panturrilha', 'lesão na virilha', 'contusão no pé'];
 
 // Quanto cada característica treinada soma na nota geral, por posição (soma 0,8: tudo no teto = +8 na nota).
 const OVR_WEIGHT = {
@@ -43,7 +51,7 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const round2 = v => Math.round(v * 100) / 100;
 const dayKey = now => new Date(now - TZ_OFFSET).toISOString().slice(0, 10);
 
-const blank = () => ({ gains: {}, fit: 100, fitAt: 0, rest: false, day: null, sessions: 0, physioDay: null });
+const blank = () => ({ gains: {}, fit: 100, fitAt: 0, rest: false, day: null, sessions: 0, physioDay: null, injUntil: 0, injKind: null, susp: 0, yellows: 0 });
 const focusFor = p => (p.role === 'GK' ? GK_FOCUS : KEYS);
 
 /** Condição atual (0-100) de um estado (sem estado = 100). */
@@ -93,8 +101,30 @@ function gainFor(p, gains, focus, intensity, coach) {
   return round2(clamp(g, 0, TRAIN_MAX - cur));
 }
 
+/* ---------- lesões e suspensões ---------- */
+const injuredFor = (s, now) => (s && s.injUntil > now ? s.injUntil - now : 0); // ms que faltam
+/** 'injury' | 'susp' | null: por que o jogador não pode jogar. */
+const unavailable = (s, now) => (injuredFor(s, now) ? 'injury' : s && s.susp > 0 ? 'susp' : null);
+/** Machuca o jogador por um número de dias sorteado (rand injetável nos testes). Devolve os dias. */
+function injure(s, now, rand = Math.random, days) {
+  if (days == null) { const r = rand(); days = r < 0.55 ? 1 : r < 0.85 ? 2 + Math.floor(rand() * 2) : 4 + Math.floor(rand() * 3); }
+  s.injUntil = now + days * DAY;
+  s.injKind = INJURY_KINDS[Math.floor(rand() * INJURY_KINDS.length)];
+  return days;
+}
+/** Cartões de uma partida oficial. Devolve 'red' | 'yellows' (suspenso) ou null. */
+function cards(s, yellows, red) {
+  if (red) { s.susp = (s.susp || 0) + 1; return 'red'; } // os amarelos do lance da expulsão não acumulam
+  s.yellows = (s.yellows || 0) + yellows;
+  if (s.yellows >= YELLOW_LIMIT) { s.yellows -= YELLOW_LIMIT; s.susp = (s.susp || 0) + 1; return 'yellows'; }
+  return null;
+}
+/** O clube jogou uma partida oficial: quem estava suspenso cumpre um jogo. */
+function serve(s) { if (s && s.susp > 0) { s.susp--; return true; } return false; }
+
 /** Por que o jogador não pode treinar agora (ou null). */
 function cannotTrain(p, s, focus, intensity, now) {
+  if (injuredFor(s, now)) return p.name + ' está lesionado (' + s.injKind + ').';
   if (!focusFor(p).includes(focus)) return p.name + ': goleiro não treina ' + FOCUS[focus].toLowerCase() + '.';
   if ((s && s.gains[focus] || 0) >= TRAIN_MAX) return p.name + ' já está no máximo em ' + FOCUS[focus] + '.';
   if (!sessionsLeft(s, now)) return p.name + ' já treinou ' + SESSIONS_PER_DAY + ' vezes hoje.';
@@ -103,8 +133,8 @@ function cannotTrain(p, s, focus, intensity, now) {
   return null;
 }
 
-/** Aplica uma sessão (o estado precisa existir). Devolve os pontos ganhos. */
-function train(p, s, focus, intensity, coach, now) {
+/** Aplica uma sessão (o estado precisa existir). Devolve { gain, injury } (injury = dias fora, se machucou no treino forte). */
+function train(p, s, focus, intensity, coach, now, rand = Math.random) {
   const g = gainFor(p, s.gains, focus, intensity, coach);
   checkpoint(s, now);
   s.gains[focus] = round2((s.gains[focus] || 0) + g);
@@ -113,7 +143,9 @@ function train(p, s, focus, intensity, coach, now) {
   const d = dayKey(now);
   s.sessions = s.day === d ? s.sessions + 1 : 1;
   s.day = d;
-  return g;
+  let injury = 0;
+  if (intensity === 'hard' && rand() < TRAIN_INJURY.base + (s.fit < TRAIN_INJURY.below ? TRAIN_INJURY.tired : 0)) injury = injure(s, now, rand, rand() < 0.7 ? 1 : 2);
+  return { gain: g, injury };
 }
 
 /** Depois de uma partida: energy = { start, end } (0-1) do motor. Devolve a condição nova. */
@@ -126,22 +158,32 @@ function afterMatch(s, energy, now) {
 
 function setRest(s, on, now) { checkpoint(s, now); s.rest = !!on; }
 
+/** Fisioterapia: +PHYSIO de condição e, se estiver lesionado, um dia a menos de lesão. */
 function physio(s, now) {
   checkpoint(s, now);
   s.fit = Math.min(100, s.fit + PHYSIO);
   s.physioDay = dayKey(now);
+  if (injuredFor(s, now)) { s.injUntil -= DAY; if (s.injUntil <= now) { s.injUntil = 0; s.injKind = null; } }
 }
 
 /** O que a tela do clube precisa de cada jogador do elenco. */
-const view = (s, now) => ({ cond: Math.floor(condition(s, now)), rest: !!(s && s.rest), left: sessionsLeft(s, now), physio: physioLeft(s, now) });
+const view = (s, now) => {
+  const v = { cond: Math.floor(condition(s, now)), rest: !!(s && s.rest), left: sessionsLeft(s, now), physio: physioLeft(s, now) };
+  const inj = injuredFor(s, now);
+  if (inj) { v.inj = Math.ceil(inj / 3600e3); v.injKind = s.injKind; } // horas que faltam
+  if (s && s.susp) v.susp = s.susp;
+  if (s && s.yellows) v.yellows = s.yellows;
+  return v;
+};
 
 /** Regras para a tela (aba Treino). */
 const meta = () => ({
   focus: FOCUS, gkFocus: GK_FOCUS, intensity: INTENSITY, trainMax: TRAIN_MAX, sessionsPerDay: SESSIONS_PER_DAY,
-  recovery: RECOVERY, restRecovery: REST_RECOVERY, physio: PHYSIO, physioRatio: PHYSIO_RATIO, physioMin: PHYSIO_MIN
+  recovery: RECOVERY, restRecovery: REST_RECOVERY, physio: PHYSIO, physioRatio: PHYSIO_RATIO, physioMin: PHYSIO_MIN, yellowLimit: YELLOW_LIMIT
 });
 
 module.exports = {
   FOCUS, KEYS, GK_FOCUS, INTENSITY, TRAIN_MAX, SESSIONS_PER_DAY, RECOVERY, REST_RECOVERY, PHYSIO, OVR_WEIGHT,
-  blank, condition, sessionsLeft, physioLeft, physioCost, trainOvr, autoFocus, gainFor, cannotTrain, train, afterMatch, setRest, physio, view, meta, dayKey
+  blank, condition, sessionsLeft, physioLeft, physioCost, trainOvr, autoFocus, gainFor, cannotTrain, train, afterMatch, setRest, physio, view, meta, dayKey,
+  injuredFor, unavailable, injure, cards, serve, YELLOW_LIMIT
 };

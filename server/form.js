@@ -19,7 +19,7 @@ class Tally {
   get(side, name) {
     const k = side + '|' + name;
     let e = this.players.get(k);
-    if (!e) this.players.set(k, e = { side, name, shots: 0, onTarget: 0, goals: 0, og: 0, assists: 0, saves: 0, steals: 0, intercepts: 0, passes: 0, risky: 0, fouls: 0, yellow: 0 });
+    if (!e) this.players.set(k, e = { side, name, shots: 0, onTarget: 0, goals: 0, og: 0, assists: 0, saves: 0, steals: 0, intercepts: 0, passes: 0, risky: 0, fouls: 0, yellow: 0, red: 0, injured: false });
     return e;
   }
   add(ev) {
@@ -46,6 +46,8 @@ class Tally {
       case 'pass': e.passes++; if (ev.kind === 'cross' || ev.kind === 'long') e.risky++; this.last[ev.team] = { from: p.name, to: ev.to && ev.to.name, t: ev.t }; this.last[other] = null; break;
       case 'foul': e.fouls++; break;
       case 'yellow': e.yellow++; break;
+      case 'red': e.red++; break;
+      case 'injury': e.injured = true; break;
       case 'sub': this.subsIn.add(ev.team + '|' + p.name); break;
     }
   }
@@ -60,7 +62,7 @@ const BASELINE = { GK: 0.5, DEF: 0, MID: 0.5, FWD: 0.5 };
  */
 function rate(role, e, r, conceded) {
   const clean = conceded === 0;
-  let s = r * 0.6 + e.goals * 0.6 + (e.assists || 0) * 0.35 - e.og * 0.4 - e.yellow * 0.2 - e.fouls * 0.05;
+  let s = r * 0.6 + e.goals * 0.6 + (e.assists || 0) * 0.35 - e.og * 0.4 - e.yellow * 0.2 - (e.red || 0) * 0.6 - e.fouls * 0.05;
   const def = e.steals + e.intercepts;
   if (role === 'GK') {
     s += cap(e.saves * 0.18, 0.9) + (clean ? 0.5 : 0) - Math.min(1, conceded * 0.22);

@@ -132,7 +132,13 @@
           out.push({ min: ev.min, type: 'intercept', text: this.nm(p) + ' corta o passe de ' + this.nm(ev.from) + '!', voice: true, big: false, prio: 1 });
           break;
         case 'sub':
-          out.push({ min: ev.min, type: ev.type, text: 'Substituição no ' + this._team(ev.team) + ': sai ' + ev.out.name + ', entra ' + p.name + '.', voice: true, big: false, prio: 2 });
+          out.push({ min: ev.min, type: ev.type, text: (ev.injury ? 'Substituição forçada no ' : 'Substituição no ') + this._team(ev.team) + ': sai ' + ev.out.name + (ev.injury ? ', machucado' : '') + ', entra ' + p.name + '.', voice: true, big: false, prio: 2 });
+          break;
+        case 'injury':
+          out.push({ min: ev.min, type: ev.type, text: this._pick(['Ih! ', 'Preocupação: ', 'Lance feio! ']) + this.nm(p) + ' fica no chão sentindo a lesão.', voice: true, big: false, prio: 2 });
+          break;
+        case 'red':
+          out.push({ min: ev.min, type: ev.type, text: (ev.second ? 'Segundo amarelo e cartão vermelho' : 'Cartão vermelho direto') + ' para ' + (p ? p.name : 'o jogador') + '! O ' + this._team(ev.team) + ' fica com um a menos.', voice: true, big: true, prio: 3 });
           break;
         case 'tactic':
           out.push({ min: ev.min, type: ev.type, text: ev.text + '.', voice: true, big: false, prio: 2 });

@@ -98,6 +98,17 @@
    */
   const FATIGUE = { base: 0.0005, run: 0.0017, min: 0.15, halftime: 0.05, limit: 0.8, speedLoss: 0.3, skillLoss: 0.18 };
 
+  /*
+   * Regras da versão 6 (só quando as duas definições de time trazem v >= 6; partidas antigas continuam iguais):
+   * cartão vermelho (direto ou segundo amarelo: o expulso sai e o time fica com um a menos), lesões em disputas de bola
+   * (só em partidas com `injuries` nos dois times; cansado se machuca mais) e troca automática do lesionado pelo melhor
+   * reserva da posição (def.bench) na primeira bola parada, dentro do limite de trocas.
+   */
+  const CARDS = { red: 0.015, yellow: 0.22 };
+  const INJURY = { base: 0.004, tired: 2, fouled: 3 };
+  const MAX_SUBS = 5;
+  const OFF = { x: -40, y: -40 }; // onde fica quem foi expulso (fora do campo e longe de qualquer lance)
+
   class Player {
     constructor(team, d, idx) {
       this.team = team;
@@ -156,6 +167,8 @@
       this.away.dir = -1;
       this.players = this.home.players.concat(this.away.players);
       this.fatigue = [homeDef, awayDef].some(d => d.players.some(p => p.fit != null));
+      this.rules = Math.min(homeDef.v || 0, awayDef.v || 0);
+      this.injuries = this.rules >= 6 && !!homeDef.injuries && !!awayDef.injuries;
       this.used = []; // energia de quem saiu por substituição
       if (this.fatigue) for (const p of this.players) p._tire();
 
@@ -218,7 +231,8 @@
         players: [], dir: 1, opp: null, score: 0, chasers: new Set(),
         human: false, ctrl: null, input: { dx: 0, dy: 0, sprint: false }, act: null,
         tactic: TACTICS[def.tactic] ? def.tactic : 'balanced', plan: (def.plan || []).slice().sort((a, b) => a.min - b.min), planIdx: 0,
-        stats: { shots: 0, onTarget: 0, passes: 0, corners: 0, fouls: 0, yellow: 0, poss: 0 }
+        bench: (def.bench || []).slice(), benchUsed: new Set(), subs: 0,
+        stats: { shots: 0, onTarget: 0, passes: 0, corners: 0, fouls: 0, yellow: 0, red: 0, poss: 0 }
       };
       t.tac = TACTICS[t.tactic];
       def.players.forEach((d, i) => t.players.push(new Player(t, d, i)));
@@ -234,6 +248,7 @@
 
     _placeForKickoff() {
       for (const p of this.players) {
+        if (p.off) continue;
         const h = this._homePos(p, true);
         p.x = h.x; p.y = h.y; p.vx = p.vy = 0;
         p.face = p.team.dir > 0 ? 0 : Math.PI;
@@ -265,12 +280,13 @@
     }
 
     _pickTaker(type, team, spot) {
-      const out = team.players.filter(p => p.role !== 'GK');
+      const out = team.players.filter(p => p.role !== 'GK' && !p.off);
       const nearest = list => list.reduce((a, c) => (dist(c, spot) < dist(a, spot) ? c : a));
       if (type === 'goalkick') return this._gk(team);
-      if (type === 'kickoff') return nearest(out.filter(p => p.role === 'FWD'));
-      if (type === 'corner') return nearest(out.filter(p => p.role !== 'DEF'));
-      if (type === 'freekick') return nearest(out.filter(p => p.role !== 'FWD' || dist(p, spot) < 12));
+      const pick = list => nearest(list.length ? list : out);
+      if (type === 'kickoff') return pick(out.filter(p => p.role === 'FWD'));
+      if (type === 'corner') return pick(out.filter(p => p.role !== 'DEF'));
+      if (type === 'freekick') return pick(out.filter(p => p.role !== 'FWD' || dist(p, spot) < 12));
       return nearest(out);
     }
 
@@ -286,6 +302,7 @@
     /** Substituições e mudanças de tática combinadas antes do jogo. Só acontecem com a bola parada; não usam números aleatórios. */
     _applyPlans() {
       for (const t of this.teams) {
+        if (this.rules >= 6) for (const p of t.players) if (p.injured && !p.off && !p.hurt) this._injurySub(t, p);
         while (t.planIdx < t.plan.length && this.clock / 60 >= t.plan[t.planIdx].min - 1) {
           const e = t.plan[t.planIdx++];
           if (e.type === 'tactic' && TACTICS[e.style]) {
@@ -293,6 +310,10 @@
             this._emit({ type: 'tactic', team: t.key, style: e.style, text: t.name + ' muda para ' + TACTIC_NAMES[e.style] });
           } else if (e.type === 'sub' && e.out >= 1 && e.out < t.players.length && e.in) {
             const p = t.players[e.out], outP = { name: p.name, short: p.short };
+            if (this.rules >= 6) { // expulso não é substituído; quem já entrou por lesão não entra de novo; no máximo 5 trocas
+              if (p.off || t.subs >= MAX_SUBS || t.benchUsed.has(e.in.name)) continue;
+              t.subs++; t.benchUsed.add(e.in.name);
+            }
             this.used.push({ team: t.key, name: p.name, start: p.e0, end: +p.energy.toFixed(3) });
             p.name = e.in.name; p.short = e.in.short || e.in.name.split(' ').slice(-1)[0]; p.num = e.in.num;
             p._setup(e.in);
@@ -320,6 +341,7 @@
 
       if (this.state === 'pens') {
         for (const p of this.players) {
+          if (p.off) continue;
           const t = this._target(p);
           this._steer(p, t.x, t.y, dt, t.u || 1);
         }
@@ -339,6 +361,7 @@
       this._assignChasers();
       for (const t of this.teams) if (t.human) this._pickCtrl(t);
       for (const p of this.players) {
+        if (p.off) continue;
         const t = this._target(p);
         this._steer(p, t.x, t.y, dt, t.u || 1);
       }
@@ -355,9 +378,47 @@
       }
     }
 
+    /** Lesionado sai para o melhor reserva disponível (mesma função em campo, se houver); sem reserva ou sem trocas, joga no sacrifício. */
+    _injurySub(t, p) {
+      let best = null;
+      if (t.subs < MAX_SUBS) {
+        for (const b of t.bench) {
+          if (t.benchUsed.has(b.name) || (b.role === 'GK') !== (p.role === 'GK')) continue;
+          const sc = (b.ovr || 75) * (b.role === p.role ? 1 : 0.85);
+          if (!best || sc > best.sc) best = { b, sc };
+        }
+      }
+      if (!best) { p.hurt = true; p.energy = Math.min(p.energy, 0.3); if (this.fatigue) p._tire(); return; }
+      const b = best.b, outP = { name: p.name, short: p.short };
+      t.subs++; t.benchUsed.add(b.name);
+      this.used.push({ team: t.key, name: p.name, start: p.e0, end: +p.energy.toFixed(3) });
+      p.name = b.name; p.short = b.short || b.name.split(' ').slice(-1)[0]; p.num = b.num;
+      p._setup(b);
+      if (b.role !== p.role) for (const k of Object.keys(p.skill0)) p.skill0[k] *= 0.85; // fora de posição
+      if (this.fatigue) p._tire(); else Object.assign(p.skill, p.skill0);
+      p.yellow = 0; p.injured = false;
+      this._emit({ type: 'sub', team: t.key, player: p, out: outP, injury: true, text: 'Substituição por lesão no ' + t.name + ': sai ' + outP.name + ', entra ' + p.name });
+    }
+
+    _injure(p) {
+      p.injured = true;
+      this._emit({ type: 'injury', team: p.team.key, player: p, text: p.name + ' se machuca e pede atendimento' });
+    }
+
+    /** Expulsão: o jogador sai de campo e o time fica com um a menos até o fim. */
+    _sendOff(p, second) {
+      const b = this.ball, t = p.team;
+      p.off = true; t.stats.red++;
+      p.x = OFF.x; p.y = OFF.y; p.vx = p.vy = 0;
+      if (b.receiver === p) b.receiver = null;
+      if (t.ctrl === p) t.ctrl = null;
+      this._emit({ type: 'red', team: t.key, player: p, second, text: 'Cartão vermelho para ' + p.name + (second ? ' (segundo amarelo)' : '') });
+    }
+
     /** Cansaço: a energia cai com o tempo e mais quando o jogador corre perto do máximo (só + - * /: determinístico). */
     _fatigue(dt) {
       for (const p of this.players) {
+        if (p.off) continue;
         const r = (p.vx * p.vx + p.vy * p.vy) / (p.speed0 * p.speed0);
         p.energy = Math.max(FATIGUE.min, p.energy - dt * p.sta * (FATIGUE.base + FATIGUE.run * r));
         p._tire();
@@ -370,7 +431,7 @@
       if (b.owner && b.owner.team === t && b.owner.role !== 'GK') { t.ctrl = b.owner; return; }
       const bx = b.x + b.vx * 0.2, by = b.y + b.vy * 0.2;
       let best = null, bd = 1e9;
-      for (const p of t.players) { if (p.role === 'GK') continue; const d = DM.hypot(p.x - bx, p.y - by); if (d < bd) { bd = d; best = p; } }
+      for (const p of t.players) { if (p.role === 'GK' || p.off) continue; const d = DM.hypot(p.x - bx, p.y - by); if (d < bd) { bd = d; best = p; } }
       if (!t.ctrl || t.ctrl.role === 'GK' || bd < DM.hypot(t.ctrl.x - bx, t.ctrl.y - by) - 2.5) t.ctrl = best;
     }
 
@@ -395,7 +456,7 @@
       const am = DM.hypot(ax, ay) || 1; ax /= am; ay /= am;
       let best = null, bs = -1e9;
       for (const q of t.players) {
-        if (q === o || q.role === 'GK') continue;
+        if (q === o || q.role === 'GK' || q.off) continue;
         const dx = q.x - o.x, dy = q.y - o.y, d = DM.hypot(dx, dy);
         if (d < 4 || d > 48) continue;
         const cos = (dx * ax + dy * ay) / d;
@@ -450,7 +511,7 @@
     /* ---------- pênaltis ---------- */
     _startPens() {
       const spot = { x: L - 11, y: W / 2 };
-      const order = t => t.players.filter(p => p.role !== 'GK').sort((a, b) => b.skill.shot - a.skill.shot || a.idx - b.idx);
+      const order = t => t.players.filter(p => p.role !== 'GK' && !p.off).sort((a, b) => b.skill.shot - a.skill.shot || a.idx - b.idx);
       this.state = 'pens';
       this.pens = { score: [0, 0], taken: [0, 0], kicks: [], first: rng() < 0.5 ? 0 : 1, order: 0, takers: [order(this.home), order(this.away)],
         phase: 'setup', timer: 3, spot, cur: null, decided: false };
@@ -569,14 +630,26 @@
         const b = this.ball;
         if (r < 0.09) {
           d.team.stats.fouls++;
-          const card = d.yellow === 0 && rng() < 0.22;
-          this._emit({ type: 'foul', team: d.team.key, player: d, text: 'Falta de ' + d.short });
-          if (card) {
-            d.yellow++; d.team.stats.yellow++;
-            this._emit({ type: 'yellow', team: d.team.key, player: d, text: 'Cartão amarelo para ' + d.name });
+          if (this.rules >= 6) {
+            this._emit({ type: 'foul', team: d.team.key, player: d, text: 'Falta de ' + d.short });
+            const c = rng(), gk = d.role === 'GK';
+            if (c < CARDS.red && !gk) this._sendOff(d, false);
+            else if (c < CARDS.red + CARDS.yellow && !(gk && d.yellow)) {
+              d.yellow++; d.team.stats.yellow++;
+              this._emit({ type: 'yellow', team: d.team.key, player: d, text: 'Cartão amarelo para ' + d.name });
+              if (d.yellow >= 2) this._sendOff(d, true);
+            }
+          } else {
+            const card = d.yellow === 0 && rng() < 0.22;
+            this._emit({ type: 'foul', team: d.team.key, player: d, text: 'Falta de ' + d.short });
+            if (card) {
+              d.yellow++; d.team.stats.yellow++;
+              this._emit({ type: 'yellow', team: d.team.key, player: d, text: 'Cartão amarelo para ' + d.name });
+            }
           }
           const spot = { x: clamp(o.x, 1, L - 1), y: clamp(o.y, 1, W - 1) };
           this._setRestart('freekick', o.team, spot);
+          this._hurt(o, INJURY.fouled);
         } else if (r < 0.62) {
           o.cooldown = 0.7;
           this._emit({ type: 'steal', team: d.team.key, player: d, from: o, text: '' });
@@ -588,9 +661,16 @@
           b.lastTeam = d.team; b.lastPlayer = d; // último toque é de quem desarmou (se a bola entrar, o gol é dele)
           o.cooldown = 0.4; d.cooldown = 0.25;
         }
+        if (r >= 0.09) this._hurt(o, 1);
         return true;
       }
       return false;
+    }
+
+    /** Chance de lesão de quem sofreu a disputa (maior se sofreu falta e se está cansado). Só sorteia em partidas com lesões. */
+    _hurt(p, k) {
+      if (!this.injuries || p.role === 'GK' || p.injured || p.hurt) return;
+      if (rng() < INJURY.base * k * (1 + INJURY.tired * (1 - p.energy))) this._injure(p);
     }
 
     _loose(dt) {
@@ -737,7 +817,7 @@
       const t = p.team, dir = t.dir, opp = t.opp.players;
       let best = null, bs = -1e9;
       for (const q of t.players) {
-        if (q === p) continue;
+        if (q === p || q.off) continue;
         const d = dist(p, q);
         if (d < 5 || d > (force ? 60 : 42)) continue;
         const fwd = (q.x - p.x) * dir;
@@ -813,7 +893,7 @@
         const gkBox = (t.dir > 0 ? b.x < 16.5 : b.x > L - 16.5) && Math.abs(b.y - W / 2) < 20;
         const bx = b.x + b.vx * 0.25, by = b.y + b.vy * 0.25;
         const list = t.players
-          .filter(p => p.role !== 'GK' || (gkBox && !b.owner))
+          .filter(p => !p.off && (p.role !== 'GK' || (gkBox && !b.owner)))
           .sort((a, c) => DM.hypot(a.x - bx, a.y - by) - DM.hypot(c.x - bx, c.y - by));
         t.chasers.add(list[0]);
         if (b.owner && list[1] && dist(list[1], b.owner) < t.tac.chase) t.chasers.add(list[1]);
@@ -970,6 +1050,6 @@
     }
   }
 
-  g.FootballEngine = { VERSION: 5, TACTICS: TACTIC_NAMES, Match, Player, PITCH: { L, W, GOAL_W, GY0, GY1 } };
+  g.FootballEngine = { VERSION: 6, TACTICS: TACTIC_NAMES, Match, Player, PITCH: { L, W, GOAL_W, GY0, GY1 } };
   if (typeof module !== 'undefined') module.exports = g.FootballEngine;
 })(typeof window !== 'undefined' ? window : globalThis);

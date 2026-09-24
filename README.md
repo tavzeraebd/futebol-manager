@@ -116,7 +116,22 @@ e está na tabela `player_training`.
   mais lento e menos preciso; no intervalo recupera um pouco. No campo, um anel amarelo (vermelho no fim do fôlego) mostra quem está cansado. Nas simulações,
   um time descansado contra outro igual com 75% de condição vence 46% e perde 20%; com 50%, vence 61% e perde 16%. Entre dois times descansados a média de gols
   fica igual à de antes. A CPU entra sempre descansada. Elenco, escalação (e a escalação automática, que prefere quem está descansado) e a ficha mostram a condição.
-- Partidas gravadas antes deste recurso continuam idênticas ao rever (o cansaço só liga quando a partida traz a condição dos jogadores). Motor: versão 5.
+- Partidas gravadas antes deste recurso continuam idênticas ao rever (o cansaço só liga quando a partida traz a condição dos jogadores).
+
+## Lesões, cartão vermelho e suspensões
+- **Cartão vermelho:** direto (raro) ou pelo segundo amarelo. O expulso sai de campo e o time fica com um a menos até o fim (goleiro não é expulso).
+- **Lesões** (só em partidas entre jogadores): numa disputa de bola, quem sofre o desarme ou a falta pode se machucar; cansado se machuca mais (a
+  chance chega a quase o triplo). O lesionado é trocado sozinho na primeira bola parada pelo melhor reserva da mesma função (dentro do limite de 5 trocas,
+  que vale também para as planejadas); sem reserva ou sem trocas, ele joga no sacrifício. A narração avisa ("fica no chão sentindo a lesão", "substituição
+  forçada"). Fica de 1 a 6 dias fora (tempo real): 55% um dia, 30% dois ou três, 15% de quatro a seis. Nas simulações, cerca de uma lesão a cada 4 jogos.
+- **Treino forte** também pode machucar (2%; 8% se o jogador terminar a sessão abaixo de 35% de condição), por 1 ou 2 dias.
+- **Suspensão:** vermelho ou 3 amarelos acumulados = fora do próximo jogo oficial do clube (jogo contra a CPU não conta). Os amarelos do lance da expulsão
+  não acumulam.
+- Lesionado não treina nem joga; suspenso não joga. Se estiver escalado, na hora do jogo entra o melhor reserva da posição (a escalação avisa, e a escalação
+  automática já deixa de fora). A **fisioterapia** num lesionado também tira um dia da lesão. O aviso do fim do jogo lista quem ficou de fora, quem se
+  machucou e quem foi suspenso. A ficha do clube tem a coluna de vermelhos (CV).
+- Estado na tabela `player_training` (`inj_until`, `inj_kind`, `susp`, `yellows`); vermelhos em `player_stats.reds`. Partidas antigas continuam idênticas
+  ao rever: as regras novas só ligam em partidas com a versão 6 das regras (`v` na definição do time). Motor: versão 6.
 
 ## Estatísticas (artilharia e assistências)
 Aba **Estatísticas**: Artilharia, Assistências, Gols + assistências e Goleiros (jogos sem sofrer gol e defesas), com o clube de cada jogador.

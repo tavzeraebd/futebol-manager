@@ -59,6 +59,34 @@ function privateClub(c) {
 /** Condição física atual (0-100) de um jogador: entra na partida como energia inicial. */
 const condOf = id => TR.condition(catalog.train.get(id), Date.now());
 
+/**
+ * Time que vai a campo: quem está lesionado ou suspenso sai da escalação e entra o melhor reserva disponível da posição
+ * (se não houver ninguém, ele joga no sacrifício, com no máximo 50% de condição). Os reservas saudáveis vão para o banco
+ * (o motor usa para trocar quem se machucar). `official`: partida entre jogadores (tem lesões).
+ */
+function matchSide(club, official) {
+  const now = Date.now(), slots = R.FORMATIONS[club.formation];
+  const why = id => TR.unavailable(catalog.train.get(id), now);
+  const lineup = club.lineup.slice(), used = new Set(lineup), out = [], hurt = new Set(), skip = new Set();
+  const score = (p, slot) => (slot.pos === 'GK' ? p.ovr : p.ovr * (p.pos === slot.pos ? 1.05 : p.role === slot.role ? 1 : 0.85)) * (0.7 + 0.3 * condOf(p.id) / 100);
+  for (const id of club.squad) if (why(id)) skip.add(id);
+  lineup.forEach((id, i) => {
+    const w = id && why(id);
+    if (!w) return;
+    const slot = slots[i];
+    const best = club.squad.filter(x => !used.has(x) && !skip.has(x)).map(x => catalog.playerById.get(x))
+      .filter(p => p && (slot.pos === 'GK') === (p.pos === 'GK')).sort((a, b) => score(b, slot) - score(a, slot))[0];
+    if (best) { lineup[i] = best.id; used.add(best.id); out.push({ out: catalog.playerById.get(id), in: best, why: w }); }
+    else hurt.add(id);
+  });
+  return {
+    lineup, out, skip, injuries: official,
+    bench: club.squad.filter(x => !used.has(x) && !skip.has(x)),
+    cond: id => (hurt.has(id) ? Math.min(50, condOf(id)) : condOf(id))
+  };
+}
+const sideDef = (club, side) => R.buildTeamDef(club, side.lineup, club.formation, catalog, side.cond, { bench: side.bench, injuries: side.injuries, skip: side.skip });
+
 /* ---------- partidas ---------- */
 function simulate(homeDef, awayDef, seed, knockout) {
   const m = new E.Match(homeDef, awayDef, { seed, knockout: !!knockout });
@@ -99,8 +127,9 @@ const playbackOf = s => ({ baseTick: s.baseTick, baseTime: s.baseTime, speed: s.
 const liveSession = id => { const s = sessions.get(id); return s && Date.now() - s.createdAt < SESSION_TTL ? s : null; };
 
 function playMatch(home, awayClub, isCpu, opts = {}) {
-  const homeDef = R.buildTeamDef(home, home.lineup, home.formation, catalog, condOf);
-  const awayDef = isCpu ? cpuDef(home.lineup) : R.buildTeamDef(awayClub, awayClub.lineup, awayClub.formation, catalog, condOf);
+  const sides = { home: matchSide(home, !isCpu), away: isCpu ? null : matchSide(awayClub, true) };
+  const homeDef = sideDef(home, sides.home);
+  const awayDef = isCpu ? cpuDef(sides.home.lineup) : sideDef(awayClub, sides.away);
   const seed = crypto.randomInt(1, 2 ** 31);
   const knockout = !!opts.knockout;
   const res = simulate(homeDef, awayDef, seed, knockout);
@@ -125,8 +154,10 @@ function playMatch(home, awayClub, isCpu, opts = {}) {
     const tie = res.score[0] === res.score[1] && res.winner;
     apply(home, res.score[0], res.score[1], tie ? res.winner === 'home' : null);
     apply(awayClub, res.score[1], res.score[0], tie ? res.winner === 'away' : null);
-    const tired = updateFitness(res, { home, away: awayClub });
-    updateForm(rec, res, { home, away: awayClub }, tired);
+    const notes = updateFitness(res, { home, away: awayClub });
+    const health = updateHealth(res, { home, away: awayClub }, sides);
+    for (const k of ['home', 'away']) notes[k] = health[k].concat(notes[k]);
+    updateForm(rec, res, { home, away: awayClub }, notes);
   }
 
   if (opts.league && opts.fixtureId) {
@@ -139,7 +170,7 @@ function playMatch(home, awayClub, isCpu, opts = {}) {
 }
 /* ---------- estatísticas (artilharia, assistências...) ---------- */
 const pstats = new Map(); // "jogador|clube" -> linha de player_stats
-const STAT_COLS = ['apps', 'goals', 'assists', 'og', 'shots', 'on_target', 'saves', 'clean_sheets', 'yellows', 'fouls'];
+const STAT_COLS = ['apps', 'goals', 'assists', 'og', 'shots', 'on_target', 'saves', 'clean_sheets', 'yellows', 'reds', 'fouls'];
 function bumpStats(playerId, clubId, add, touched) {
   const k = playerId + '|' + clubId;
   let row = pstats.get(k);
@@ -148,7 +179,7 @@ function bumpStats(playerId, clubId, add, touched) {
   touched.add(row);
 }
 const sumStats = rows => rows.reduce((t, r) => { for (const c of STAT_COLS) t[c] = (t[c] || 0) + r[c]; return t; }, {});
-const statsView = r => ({ apps: r.apps || 0, goals: r.goals || 0, assists: r.assists || 0, ga: (r.goals || 0) + (r.assists || 0), shots: r.shots || 0, onTarget: r.on_target || 0, saves: r.saves || 0, cleanSheets: r.clean_sheets || 0, yellows: r.yellows || 0, fouls: r.fouls || 0 });
+const statsView = r => ({ apps: r.apps || 0, goals: r.goals || 0, assists: r.assists || 0, ga: (r.goals || 0) + (r.assists || 0), shots: r.shots || 0, onTarget: r.on_target || 0, saves: r.saves || 0, cleanSheets: r.clean_sheets || 0, yellows: r.yellows || 0, reds: r.reds || 0, fouls: r.fouls || 0 });
 const clubTag = id => { const c = db.clubs[id]; return c ? { id: c.id, name: c.name, color: c.color } : { id, name: '(removido)', color: '#888888' }; };
 const playerTag = p => ({ id: p.id, name: p.name, pos: p.pos, role: p.role, ovr: p.ovr, photo: p.photo || null, club: p.club });
 
@@ -170,21 +201,47 @@ function updateFitness(res, clubs) {
     tired[side].sort((a, b) => a.cond - b.cond);
   }
   store.saveTraining(rows);
-  return tired;
+  const line = list => (list.length ? ['🔋 Cansados: ' + list.slice(0, 4).map(x => x.name + ' ' + x.cond + '%').join(', ') + ' (veja a aba Treino)'] : []);
+  return { home: line(tired.home), away: line(tired.away) };
+}
+
+/**
+ * Depois de uma partida oficial: quem estava suspenso cumpre o jogo; vermelho ou 3º amarelo suspendem para o próximo; quem se
+ * machucou fica de 1 a 6 dias fora. Devolve as linhas do aviso de fim de jogo de cada lado.
+ */
+function updateHealth(res, clubs, sides) {
+  const now = Date.now(), rows = new Map(), notes = { home: [], away: [] };
+  for (const side of ['home', 'away']) {
+    const club = clubs[side], n = notes[side];
+    for (const x of sides[side].out) n.push('🔁 ' + x.out.short + ' (' + (x.why === 'injury' ? 'lesionado' : 'suspenso') + ') ficou fora: entrou ' + x.in.short);
+    for (const id of club.squad) { const s = catalog.train.get(id); if (TR.serve(s)) rows.set(id, s); }
+    const byName = new Map(club.squad.map(id => catalog.playerById.get(id)).filter(Boolean).map(p => [p.name, p]));
+    for (const [key, e] of res.tally.players) {
+      const p = key.startsWith(side + '|') && byName.get(e.name);
+      if (!p || (!e.yellow && !e.red && !e.injured)) continue;
+      const s = trainState(p.id), c = TR.cards(s, e.yellow, e.red);
+      if (c === 'red') n.push('🟥 ' + p.short + ' foi expulso: fica fora do próximo jogo');
+      else if (c === 'yellows') n.push('🟨 ' + p.short + ' levou o ' + TR.YELLOW_LIMIT + 'º amarelo: fica fora do próximo jogo');
+      if (e.injured) { const d = TR.injure(s, now); n.push('🚑 ' + p.short + ': ' + s.injKind + ', ' + d + (d > 1 ? ' dias' : ' dia') + ' fora'); }
+      rows.set(p.id, s);
+    }
+  }
+  store.saveTraining([...rows]);
+  return notes;
 }
 
 /**
  * Depois de uma partida entre jogadores: a nota de quem atuou (titulares e quem entrou) e do técnico sobe ou cai conforme o
  * resultado e o desempenho em campo (ver form.js); o valor de mercado acompanha. Os dois clubes recebem um resumo.
  */
-function updateForm(rec, res, clubs, tired) {
+function updateForm(rec, res, clubs, extra) {
   const changes = [], all = [], touched = new Set();
   for (const side of ['home', 'away']) {
     const club = clubs[side], def = side === 'home' ? rec.homeDef : rec.awayDef;
     const gf = res.score[side === 'home' ? 0 : 1], ga = res.score[side === 'home' ? 1 : 0];
     const r = gf > ga ? 1 : gf < ga ? -1 : res.winner ? (res.winner === side ? 0.5 : -0.5) : 0; // decidido nos pênaltis vale metade
     const who = new Map(); // nome em campo -> { id, role, sub }
-    def.players.forEach((p, i) => { if (club.lineup[i]) who.set(p.name, { id: club.lineup[i], role: p.role, sub: false }); });
+    def.players.forEach((p, i) => { const id = p.id || club.lineup[i]; if (id) who.set(p.name, { id, role: p.role, sub: false }); });
     for (const key of res.tally.subsIn) {
       if (!key.startsWith(side + '|')) continue;
       const name = key.slice(side.length + 1);
@@ -193,10 +250,10 @@ function updateForm(rec, res, clubs, tired) {
     }
     const mine = [];
     for (const [name, w] of who) {
-      const e = res.tally.players.get(side + '|' + name) || { shots: 0, onTarget: 0, goals: 0, og: 0, assists: 0, saves: 0, steals: 0, intercepts: 0, passes: 0, risky: 0, fouls: 0, yellow: 0 };
+      const e = res.tally.players.get(side + '|' + name) || { shots: 0, onTarget: 0, goals: 0, og: 0, assists: 0, saves: 0, steals: 0, intercepts: 0, passes: 0, risky: 0, fouls: 0, yellow: 0, red: 0 };
       const pts = FM.rate(w.role, e, r, ga) * (w.sub ? 0.6 : 1); // quem entrou no decorrer do jogo pesa menos
       mine.push({ id: w.id, name, side, coach: false, pts });
-      bumpStats(w.id, club.id, { apps: 1, goals: e.goals, assists: e.assists, og: e.og, shots: e.shots, on_target: e.onTarget, saves: e.saves, clean_sheets: (w.role === 'GK' || w.role === 'DEF') && ga === 0 ? 1 : 0, yellows: e.yellow, fouls: e.fouls }, touched);
+      bumpStats(w.id, club.id, { apps: 1, goals: e.goals, assists: e.assists, og: e.og, shots: e.shots, on_target: e.onTarget, saves: e.saves, clean_sheets: (w.role === 'GK' || w.role === 'DEF') && ga === 0 ? 1 : 0, yellows: e.yellow, reds: e.red || 0, fouls: e.fouls }, touched);
     }
     if (club.coach && catalog.coachById.has(club.coach)) mine.push({ id: club.coach, name: catalog.coachById.get(club.coach).name, side, coach: true, pts: FM.rateCoach(r, gf - ga) });
     for (const m of mine) {
@@ -217,7 +274,7 @@ function updateForm(rec, res, clubs, tired) {
     const parts = [];
     if (up.length) parts.push('📈 Em alta: ' + up.map(fmt).join(', '));
     if (down.length) parts.push('📉 Em baixa: ' + down.map(fmt).join(', '));
-    if (tired && tired[side].length) parts.push('🔋 Cansados: ' + tired[side].slice(0, 4).map(x => x.name + ' ' + x.cond + '%').join(', ') + ' (veja a aba Treino)');
+    if (extra) parts.push(...extra[side]);
     const club = clubs[side];
     if (parts.length && club) note(club.id, parts.join(' · '), rec.id);
   }
@@ -549,9 +606,9 @@ route('POST', '/api/practice', (req, url, body) => {
     const o = db.clubs[body.opponent];
     if (!o || o.id === me.id) bad('Escolha outro clube.');
     if (ready(o)) bad(o.name + ' ainda não escalou o time.');
-    awayDef = R.buildTeamDef(o, o.lineup, o.formation, catalog, condOf);
+    awayDef = sideDef(o, matchSide(o, false));
   }
-  return { homeDef: R.buildTeamDef(me, me.lineup, me.formation, catalog, condOf), awayDef, seed: crypto.randomInt(1, 2 ** 31), engine: E.VERSION };
+  return { homeDef: sideDef(me, matchSide(me, false)), awayDef, seed: crypto.randomInt(1, 2 ** 31), engine: E.VERSION };
 });
 
 /* ---------- Centro de Treinamento e condição física ---------- */
@@ -581,10 +638,10 @@ route('POST', '/api/train', (req, url, body) => {
     const why = lock ? p.name + ': ' + lock.toLowerCase() : f ? TR.cannotTrain(p, cur, f, intensity, now) : p.name + ' já está no máximo em tudo.';
     if (why) { skipped.push(why); continue; }
     const s = trainState(p.id);
-    const gain = TR.train(p, s, f, intensity, coach, now);
+    const { gain, injury } = TR.train(p, s, f, intensity, coach, now);
     catalog.apply(p); // nota e valor sobem com o treino
     rows.push([p.id, s]);
-    done.push({ id: p.id, name: p.name, focus: f, gain, cond: Math.floor(s.fit) });
+    done.push({ id: p.id, name: p.name, focus: f, gain, cond: Math.floor(s.fit), injury, injKind: injury ? s.injKind : null });
   }
   if (!done.length) bad(skipped[0] || 'Nenhum jogador pôde treinar.');
   store.saveTraining(rows);
@@ -606,7 +663,7 @@ route('POST', '/api/physio', (req, url, body) => {
   const now = Date.now(), list = [], skipped = [];
   for (const p of squadPick(club, body.ids)) {
     const s = catalog.train.get(p.id);
-    if (TR.condition(s, now) >= 99.5) skipped.push(p.name + ' já está com 100%.');
+    if (TR.condition(s, now) >= 99.5 && !TR.injuredFor(s, now)) skipped.push(p.name + ' já está com 100%.');
     else if (!TR.physioLeft(s, now)) skipped.push(p.name + ' já fez fisioterapia hoje.');
     else list.push(p);
   }
@@ -617,7 +674,7 @@ route('POST', '/api/physio', (req, url, body) => {
   club.budget -= cost;
   save();
   store.saveTraining(rows);
-  return { club: privateClub(club), done: list.map(p => ({ id: p.id, name: p.name, cond: Math.floor(TR.condition(catalog.train.get(p.id), now)) })), skipped, cost };
+  return { club: privateClub(club), done: list.map(p => Object.assign({ id: p.id, name: p.name }, TR.view(catalog.train.get(p.id), now))), skipped, cost };
 });
 
 route('GET', '/api/clubs', (req, url) => {
