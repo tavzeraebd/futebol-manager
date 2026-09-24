@@ -12,6 +12,7 @@ const wd = require('./providers/wikidata');
 const FM = require('./form');
 const PR = require('./pricing');
 const TR = require('./training');
+const FAC = require('./facilities');
 const LG = require('./leagues');
 const CH = require('./chat');
 const { createExchange } = require('./exchange');
@@ -44,20 +45,34 @@ const online = id => (streams.get(id) || new Set()).size > 0;
 function publicClub(c) {
   const players = c.squad.map(id => catalog.playerById.get(id)).filter(Boolean);
   return {
-    id: c.id, name: c.name, manager: c.manager, color: c.color, budget: c.budget,
+    id: c.id, name: c.name, manager: c.manager, color: c.color, budget: c.budget, facilities: facilitiesOf(c),
     points: c.points, played: c.played, w: c.w, d: c.d, l: c.l, gf: c.gf, ga: c.ga,
     online: online(c.id), squadSize: players.length, squadValue: players.reduce((s, p) => s + p.value, 0)
   };
 }
+const facilitiesOf = c => ({ ct: FAC.levelOf(c.facilities, 'ct'), med: FAC.levelOf(c.facilities, 'med'), stadium: FAC.levelOf(c.facilities, 'stadium') });
+/** Efeitos das instalações de um clube (e do clube dono de um jogador) no treino e na condição física. */
+const modsOf = c => (c ? FAC.mods(c.facilities) : FAC.BASE);
+const modsFor = id => modsOf(ownerOf(id));
 function privateClub(c) {
-  const now = Date.now();
+  const now = Date.now(), m = modsOf(c);
   return Object.assign(publicClub(c), {
     squad: c.squad, coach: c.coach, formation: c.formation, lineup: c.lineup, tactic: c.tactic || 'balanced', plan: c.plan || [], google: c.google ? { email: c.google.email } : null, hasPassword: !!c.passHash,
-    fitness: Object.fromEntries(c.squad.map(id => [id, TR.view(catalog.train.get(id), now)])) // condição física, descanso e treinos que restam hoje
+    fitness: Object.fromEntries(c.squad.map(id => [id, TR.view(catalog.train.get(id), now, m)])), // condição física, descanso e treinos que restam hoje
+    mods: m
   });
 }
 /** Condição física atual (0-100) de um jogador: entra na partida como energia inicial. */
-const condOf = id => TR.condition(catalog.train.get(id), Date.now());
+const condOf = (id, m = modsFor(id)) => TR.condition(catalog.train.get(id), Date.now(), m);
+/**
+ * Congela a condição dos jogadores no ritmo de recuperação atual (o do departamento médico do dono). Chamar antes de o ritmo
+ * mudar: melhoria do médico ou jogador trocando de clube (senão a recuperação desde o último jogo/treino seria recalculada no ritmo novo).
+ */
+function settleFitness(ids) {
+  const now = Date.now(), rows = [];
+  for (const id of ids) { const s = catalog.train.get(id); if (s) { TR.checkpoint(s, now, modsFor(id)); rows.push([id, s]); } }
+  if (rows.length) store.saveTraining(rows);
+}
 
 /**
  * Time que vai a campo: quem está lesionado ou suspenso sai da escalação e entra o melhor reserva disponível da posição
@@ -65,10 +80,11 @@ const condOf = id => TR.condition(catalog.train.get(id), Date.now());
  * (o motor usa para trocar quem se machucar). `official`: partida entre jogadores (tem lesões).
  */
 function matchSide(club, official) {
-  const now = Date.now(), slots = R.FORMATIONS[club.formation];
+  const now = Date.now(), slots = R.FORMATIONS[club.formation], m = modsOf(club);
   const why = id => TR.unavailable(catalog.train.get(id), now);
+  const condOf_ = id => condOf(id, m);
   const lineup = club.lineup.slice(), used = new Set(lineup), out = [], hurt = new Set(), skip = new Set();
-  const score = (p, slot) => (slot.pos === 'GK' ? p.ovr : p.ovr * (p.pos === slot.pos ? 1.05 : p.role === slot.role ? 1 : 0.85)) * (0.7 + 0.3 * condOf(p.id) / 100);
+  const score = (p, slot) => (slot.pos === 'GK' ? p.ovr : p.ovr * (p.pos === slot.pos ? 1.05 : p.role === slot.role ? 1 : 0.85)) * (0.7 + 0.3 * condOf_(p.id) / 100);
   for (const id of club.squad) if (why(id)) skip.add(id);
   lineup.forEach((id, i) => {
     const w = id && why(id);
@@ -82,7 +98,7 @@ function matchSide(club, official) {
   return {
     lineup, out, skip, injuries: official,
     bench: club.squad.filter(x => !used.has(x) && !skip.has(x)),
-    cond: id => (hurt.has(id) ? Math.min(50, condOf(id)) : condOf(id))
+    cond: id => (hurt.has(id) ? Math.min(50, condOf_(id)) : condOf_(id))
   };
 }
 const sideDef = (club, side) => R.buildTeamDef(club, side.lineup, club.formation, catalog, side.cond, { bench: side.bench, injuries: side.injuries, skip: side.skip });
@@ -154,7 +170,10 @@ function playMatch(home, awayClub, isCpu, opts = {}) {
     const tie = res.score[0] === res.score[1] && res.winner;
     apply(home, res.score[0], res.score[1], tie ? res.winner === 'home' : null);
     apply(awayClub, res.score[1], res.score[0], tie ? res.winner === 'away' : null);
+    const gate = FAC.tickets(home.facilities);
+    home.budget += gate;
     const notes = updateFitness(res, { home, away: awayClub });
+    if (gate) notes.home.unshift('🏟️ Bilheteria: € ' + gate / 1e6 + ' M');
     const health = updateHealth(res, { home, away: awayClub }, sides);
     for (const k of ['home', 'away']) notes[k] = health[k].concat(notes[k]);
     updateForm(rec, res, { home, away: awayClub }, notes);
@@ -194,7 +213,7 @@ function updateFitness(res, clubs) {
     for (const e of res.energy) {
       const p = e.team === side && byName.get(e.name);
       if (!p) continue;
-      const s = trainState(p.id), c = TR.afterMatch(s, e, now);
+      const s = trainState(p.id), c = TR.afterMatch(s, e, now, modsOf(clubs[side]));
       rows.push([p.id, s]);
       if (c < 60) tired[side].push({ name: p.short || p.name, cond: Math.floor(c) });
     }
@@ -222,7 +241,7 @@ function updateHealth(res, clubs, sides) {
       const s = trainState(p.id), c = TR.cards(s, e.yellow, e.red);
       if (c === 'red') n.push('🟥 ' + p.short + ' foi expulso: fica fora do próximo jogo');
       else if (c === 'yellows') n.push('🟨 ' + p.short + ' levou o ' + TR.YELLOW_LIMIT + 'º amarelo: fica fora do próximo jogo');
-      if (e.injured) { const d = TR.injure(s, now); n.push('🚑 ' + p.short + ': ' + s.injKind + ', ' + d + (d > 1 ? ' dias' : ' dia') + ' fora'); }
+      if (e.injured) { const d = TR.injure(s, now, undefined, undefined, modsOf(club)); n.push('🚑 ' + p.short + ': ' + s.injKind + ', ' + d + (d > 1 ? ' dias' : ' dia') + ' fora'); }
       rows.set(p.id, s);
     }
   }
@@ -458,7 +477,7 @@ route('POST', '/api/password', (req, url, body) => {
 route('GET', '/api/meta', () => ({
   engine: E.VERSION, source: catalog.source, startBudget: R.START_BUDGET, buyPremium: R.BUY_PREMIUM, sellRatio: R.SELL_RATIO, squadMax: R.SQUAD_MAX,
   formations: R.FORMATIONS, tactics: R.TACTICS, maxSubs: R.MAX_SUBS, maxTacticChanges: R.MAX_TACTIC_CHANGES, prize: R.PRIZE, chat: { emojis: CH.EMOJIS, taunts: CH.TAUNTS },
-  training: TR.meta()
+  training: TR.meta(), facilities: FAC.meta()
 }));
 
 const ownerTag = id => { const o = ownerOf(id); return o ? { id: o.id, name: o.name } : null; };
@@ -493,7 +512,7 @@ route('GET', '/api/club', (req, url) => {
     .sort((a, b) => b.stats.ga - a.stats.ga || b.stats.goals - a.stats.goals || b.player.ovr - a.player.ovr);
   const coach = c.coach ? catalog.coachById.get(c.coach) : null;
   return {
-    club: Object.assign(publicClub(c), { formation: c.formation }),
+    club: Object.assign(publicClub(c), { formation: c.formation }), // publicClub já traz as instalações
     coach: coach ? { id: coach.id, name: coach.name, ovr: coach.ovr } : null,
     squad, totals: statsView(sumStats([...pstats.values()].filter(r => r.club_id === c.id)))
   };
@@ -523,7 +542,7 @@ route('GET', '/api/player', (req, url) => {
     profile: coach ? null : R.profileFor(it),
     stats: coach ? null : (() => { const mine = [...pstats.values()].filter(x => x.player_id === it.id); return { total: statsView(sumStats(mine)), byClub: mine.filter(x => db.clubs[x.club_id]).map(x => Object.assign({ club: clubTag(x.club_id) }, statsView(x))) }; })(),
     form: { delta: +delta.toFixed(2), baseOvr: it.ovr0 != null ? it.ovr0 : it.ovr, baseValue: it.value0 != null ? it.value0 : it.value, max: FM.MAX_FORM },
-    fitness: coach ? null : TR.view(catalog.train.get(it.id), Date.now()),
+    fitness: coach ? null : TR.view(catalog.train.get(it.id), Date.now(), modsFor(it.id)),
     training: coach ? null : { ovr: it.trainOvr || 0, max: TR.TRAIN_MAX },
     price: { buy: R.buyPrice(it), sell: Math.round(it.value * R.SELL_RATIO) },
     teamBonus: coach ? +((it.ovr - 75) / 4).toFixed(1) : null // técnico: efeito nas habilidades do time, em %
@@ -546,6 +565,7 @@ route('POST', '/api/buy', (req, url, body) => {
     club.coach = item.id;
   } else {
     if (club.squad.length >= R.SQUAD_MAX) bad('Elenco cheio (máx. ' + R.SQUAD_MAX + ').');
+    settleFitness([item.id]);
     club.squad.push(item.id);
   }
   club.budget -= price;
@@ -564,6 +584,7 @@ route('POST', '/api/sell', (req, url, body) => {
   if (isCoach) { if (club.coach !== item.id) bad('Esse técnico não é seu.'); club.coach = null; }
   else {
     if (!club.squad.includes(item.id)) bad('Esse jogador não é seu.');
+    settleFitness([item.id]);
     club.squad = club.squad.filter(x => x !== item.id);
     club.lineup = club.lineup.map(x => (x === item.id ? null : x));
   }
@@ -630,15 +651,15 @@ route('POST', '/api/train', (req, url, body) => {
   const focus = body.focus && body.focus !== 'auto' ? String(body.focus) : 'auto';
   if (focus !== 'auto' && !TR.FOCUS[focus]) bad('Treino inválido.');
   const coach = club.coach ? catalog.coachById.get(club.coach) : null;
-  const now = Date.now(), done = [], skipped = [], rows = [];
+  const now = Date.now(), done = [], skipped = [], rows = [], m = modsOf(club);
   for (const p of squadPick(club, body.ids)) {
     const cur = catalog.train.get(p.id);
     const f = focus === 'auto' ? TR.autoFocus(p, cur ? cur.gains : {}) : focus;
     const lock = XC.lockedReason(p.id);
-    const why = lock ? p.name + ': ' + lock.toLowerCase() : f ? TR.cannotTrain(p, cur, f, intensity, now) : p.name + ' já está no máximo em tudo.';
+    const why = lock ? p.name + ': ' + lock.toLowerCase() : f ? TR.cannotTrain(p, cur, f, intensity, now, m) : p.name + ' já está no máximo em tudo.';
     if (why) { skipped.push(why); continue; }
     const s = trainState(p.id);
-    const { gain, injury } = TR.train(p, s, f, intensity, coach, now);
+    const { gain, injury } = TR.train(p, s, f, intensity, coach, now, undefined, m);
     catalog.apply(p); // nota e valor sobem com o treino
     rows.push([p.id, s]);
     done.push({ id: p.id, name: p.name, focus: f, gain, cond: Math.floor(s.fit), injury, injKind: injury ? s.injKind : null });
@@ -652,7 +673,7 @@ route('POST', '/api/train', (req, url, body) => {
 route('POST', '/api/rest', (req, url, body) => {
   const club = auth(req, url);
   const now = Date.now();
-  const rows = squadPick(club, body.ids).map(p => { const s = trainState(p.id); TR.setRest(s, !!body.on, now); return [p.id, s]; });
+  const rows = squadPick(club, body.ids).map(p => { const s = trainState(p.id); TR.setRest(s, !!body.on, now, modsOf(club)); return [p.id, s]; });
   store.saveTraining(rows);
   return { club: privateClub(club) };
 });
@@ -660,21 +681,36 @@ route('POST', '/api/rest', (req, url, body) => {
 /** Fisioterapia: devolve condição na hora; paga (proporcional ao valor do jogador) e uma vez por dia por jogador. */
 route('POST', '/api/physio', (req, url, body) => {
   const club = auth(req, url);
-  const now = Date.now(), list = [], skipped = [];
+  const now = Date.now(), list = [], skipped = [], m = modsOf(club);
   for (const p of squadPick(club, body.ids)) {
     const s = catalog.train.get(p.id);
-    if (TR.condition(s, now) >= 99.5 && !TR.injuredFor(s, now)) skipped.push(p.name + ' já está com 100%.');
+    if (TR.condition(s, now, m) >= 99.5 && !TR.injuredFor(s, now)) skipped.push(p.name + ' já está com 100%.');
     else if (!TR.physioLeft(s, now)) skipped.push(p.name + ' já fez fisioterapia hoje.');
     else list.push(p);
   }
   if (!list.length) bad(skipped[0]);
-  const cost = list.reduce((t, p) => t + TR.physioCost(p), 0);
+  const cost = list.reduce((t, p) => t + TR.physioCost(p, m), 0);
   if (cost > club.budget) bad('Saldo insuficiente: a fisioterapia de ' + list.length + ' jogador(es) custa ' + millions(cost) + '.', 402);
-  const rows = list.map(p => { const s = trainState(p.id); TR.physio(s, now); return [p.id, s]; });
+  const rows = list.map(p => { const s = trainState(p.id); TR.physio(s, now, m); return [p.id, s]; });
   club.budget -= cost;
   save();
   store.saveTraining(rows);
-  return { club: privateClub(club), done: list.map(p => Object.assign({ id: p.id, name: p.name }, TR.view(catalog.train.get(p.id), now))), skipped, cost };
+  return { club: privateClub(club), done: list.map(p => Object.assign({ id: p.id, name: p.name }, TR.view(catalog.train.get(p.id), now, m))), skipped, cost };
+});
+
+/** Melhora uma instalação do clube (Centro de Treinamento, departamento médico ou estádio) em um nível. */
+route('POST', '/api/facility', (req, url, body) => {
+  const club = auth(req, url);
+  const key = String(body.key || '');
+  if (!FAC.FACILITIES[key]) bad('Instalação inválida.');
+  const cost = FAC.upgradeCost(club.facilities, key);
+  if (cost == null) bad(FAC.FACILITIES[key].name + ' já está no nível máximo.');
+  if (cost > club.budget) bad('Saldo insuficiente: melhorar custa ' + millions(cost) + '.', 402);
+  if (key === 'med') settleFitness(club.squad); // a recuperação até agora foi no ritmo antigo
+  club.facilities = Object.assign({}, club.facilities, { [key]: FAC.levelOf(club.facilities, key) + 1 });
+  club.budget -= cost;
+  save();
+  return { club: privateClub(club), level: club.facilities[key] };
 });
 
 route('GET', '/api/clubs', (req, url) => {
@@ -1079,7 +1115,7 @@ async function boot() {
   const owned = new Set(Object.values(db.clubs).flatMap(c => c.squad));
   catalog = load({ imported: await store.loadImported(), persist: p => store.saveImported(p), keep: owned, form: await store.loadForm(), train: await store.loadTraining() });
   for (const r of await store.loadStats()) pstats.set(r.player_id + '|' + r.club_id, r);
-  XC = createExchange({ db, catalog, R, save, push, pushAll });
+  XC = createExchange({ db, catalog, R, save, push, pushAll, beforeMove: id => settleFitness([id]) });
   // jogadores importados por outros meios (ex.: carga em massa) entram no catálogo sem reiniciar
   let since = new Date().toISOString();
   setInterval(async () => {

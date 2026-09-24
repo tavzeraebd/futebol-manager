@@ -29,12 +29,12 @@ const clubRow = c => ({
   id: c.id, name: c.name, manager: c.manager, color: c.color, budget: c.budget, formation: c.formation, coach: c.coach || null,
   lineup: c.lineup, tactic: c.tactic || 'balanced', plan: c.plan || [], points: c.points, played: c.played, w: c.w, d: c.d, l: c.l, gf: c.gf, ga: c.ga,
   pass_hash: c.passHash || null, google_sub: c.google ? c.google.sub : null, google_email: c.google ? c.google.email || null : null,
-  google_name: c.google ? c.google.name || null : null, sessions: c.sessions || [], created_at: iso(c.createdAt)
+  google_name: c.google ? c.google.name || null : null, sessions: c.sessions || [], facilities: c.facilities || {}, created_at: iso(c.createdAt)
 });
 const clubFrom = r => ({
   id: r.id, sessions: r.sessions, passHash: r.pass_hash, google: r.google_sub ? { sub: r.google_sub, email: r.google_email, name: r.google_name } : null,
   name: r.name, manager: r.manager, color: r.color, budget: Number(r.budget), squad: [], coach: r.coach, formation: r.formation, lineup: r.lineup,
-  tactic: r.tactic, plan: r.plan, points: r.points, played: r.played, w: r.w, d: r.d, l: r.l, gf: r.gf, ga: r.ga, createdAt: ms(r.created_at)
+  tactic: r.tactic, plan: r.plan, points: r.points, played: r.played, w: r.w, d: r.d, l: r.l, gf: r.gf, ga: r.ga, facilities: r.facilities || {}, createdAt: ms(r.created_at)
 });
 
 const matchRow = m => ({

@@ -133,6 +133,18 @@ e está na tabela `player_training`.
 - Estado na tabela `player_training` (`inj_until`, `inj_kind`, `susp`, `yellows`); vermelhos em `player_stats.reds`. Partidas antigas continuam idênticas
   ao rever: as regras novas só ligam em partidas com a versão 6 das regras (`v` na definição do time). Motor: versão 6.
 
+## Estrutura do clube (aba "Estrutura")
+Três instalações compradas com o saldo, do nível 1 ao 5. Subir de nível custa € 15 M, 30 M, 60 M e 100 M (€ 205 M para levar uma instalação ao máximo).
+Todo clube começa no nível 1, que equivale às regras de antes.
+- **Centro de Treinamento:** o treino rende +10% por nível acima do 1 (até +40%); a partir do nível 4, cada jogador treina **3 vezes por dia**.
+- **Departamento médico:** a condição física volta +1% por hora por nível (nível 5: 8% por hora, 16% em descanso); lesões duram 10% menos por nível
+  e a fisioterapia fica 10% mais barata por nível (até 40%).
+- **Estádio:** bilheteria em cada partida oficial jogada em casa (quem desafia é o mandante): € 2 M, 4 M, 6 M e 9 M nos níveis 2 a 5. Jogo contra a CPU não
+  rende bilheteria.
+- A recuperação segue o departamento médico do clube dono do jogador: ao melhorar o médico ou ao trocar de clube (compra, venda, leilão, troca) a condição
+  é "congelada" no ritmo antigo, então ninguém recupera retroativamente. A ficha do clube mostra o nível de cada instalação.
+- Fica na coluna `clubs.facilities` (jsonb); o reset de temporada volta tudo ao nível 1.
+
 ## Estatísticas (artilharia e assistências)
 Aba **Estatísticas**: Artilharia, Assistências, Gols + assistências e Goleiros (jogos sem sofrer gol e defesas), com o clube de cada jogador.
 Só contam partidas entre jogadores (a CPU é teste). Clicando num jogador abre a ficha (com as estatísticas dele por clube) e clicando num

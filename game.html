@@ -77,6 +77,7 @@
             <button data-tab="squad" type="button">Elenco</button>
             <button data-tab="lineup" type="button">Escalação</button>
             <button data-tab="train" type="button">Treino</button>
+            <button data-tab="facil" type="button">Estrutura</button>
             <button data-tab="clubs" type="button">Clubes</button>
             <button data-tab="leagues" type="button">Ligas</button>
             <button data-tab="stats" type="button">Estatísticas</button>
@@ -185,6 +186,12 @@
           <button class="btn" id="trRest" type="button">Descansar</button>
           <button class="btn" id="trPhysio" type="button">Fisioterapia</button>
         </div>
+      </section>
+
+      <section id="tab-facil" class="card" hidden>
+        <div class="row-between"><h2>🏗️ Estrutura do clube</h2><span class="muted" id="fcSummary"></span></div>
+        <p class="muted">Invista o saldo nas instalações do clube. Cada uma vai do nível 1 ao 5, e a melhoria vale até a temporada recomeçar.</p>
+        <div class="fac-grid" id="fcList"></div>
       </section>
 
       <section id="tab-stats" class="card" hidden>

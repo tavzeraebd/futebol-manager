@@ -51,21 +51,24 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const round2 = v => Math.round(v * 100) / 100;
 const dayKey = now => new Date(now - TZ_OFFSET).toISOString().slice(0, 10);
 
+/** Efeitos das instalações do clube (facilities.js); BASE = clube sem melhorias. */
+const BASE = { gain: 1, sessions: SESSIONS_PER_DAY, recovery: RECOVERY, rest: REST_RECOVERY, injury: 1, physio: 1 };
+
 const blank = () => ({ gains: {}, fit: 100, fitAt: 0, rest: false, day: null, sessions: 0, physioDay: null, injUntil: 0, injKind: null, susp: 0, yellows: 0 });
 const focusFor = p => (p.role === 'GK' ? GK_FOCUS : KEYS);
 
 /** Condição atual (0-100) de um estado (sem estado = 100). */
-function condition(s, now) {
+function condition(s, now, m = BASE) {
   if (!s) return 100;
   const h = Math.max(0, now - s.fitAt) / 3600e3;
-  return clamp(s.fit + (s.rest ? REST_RECOVERY : RECOVERY) * h, 0, 100);
+  return clamp(s.fit + (s.rest ? m.rest : m.recovery) * h, 0, 100);
 }
 /** Congela a condição atual em fit/fitAt (antes de mudar o ritmo de recuperação ou de somar/tirar condição). */
-function checkpoint(s, now) { s.fit = round2(condition(s, now)); s.fitAt = now; }
+function checkpoint(s, now, m) { s.fit = round2(condition(s, now, m)); s.fitAt = now; }
 
-const sessionsLeft = (s, now) => (s && s.day === dayKey(now) ? Math.max(0, SESSIONS_PER_DAY - s.sessions) : SESSIONS_PER_DAY);
+const sessionsLeft = (s, now, m = BASE) => (s && s.day === dayKey(now) ? Math.max(0, m.sessions - s.sessions) : m.sessions);
 const physioLeft = (s, now) => !s || s.physioDay !== dayKey(now);
-const physioCost = p => Math.max(PHYSIO_MIN, Math.round(p.value * PHYSIO_RATIO / 1e5) * 1e5);
+const physioCost = (p, m = BASE) => Math.round(Math.max(PHYSIO_MIN, p.value * PHYSIO_RATIO) * m.physio / 1e5) * 1e5; // múltiplo de € 100 mil (o saldo é inteiro)
 
 /** Soma na nota geral pelo que foi treinado. */
 function trainOvr(role, gains) {
@@ -95,9 +98,9 @@ function ageFactor(age) {
 }
 
 /** Pontos ganhos numa sessão (já limitados ao teto). */
-function gainFor(p, gains, focus, intensity, coach) {
+function gainFor(p, gains, focus, intensity, coach, m = BASE) {
   const cur = gains[focus] || 0;
-  const g = INTENSITY[intensity].gain * (1 - 0.8 * cur / TRAIN_MAX) * coachFactor(coach) * ageFactor(p.age);
+  const g = INTENSITY[intensity].gain * (1 - 0.8 * cur / TRAIN_MAX) * coachFactor(coach) * ageFactor(p.age) * m.gain;
   return round2(clamp(g, 0, TRAIN_MAX - cur));
 }
 
@@ -105,9 +108,10 @@ function gainFor(p, gains, focus, intensity, coach) {
 const injuredFor = (s, now) => (s && s.injUntil > now ? s.injUntil - now : 0); // ms que faltam
 /** 'injury' | 'susp' | null: por que o jogador não pode jogar. */
 const unavailable = (s, now) => (injuredFor(s, now) ? 'injury' : s && s.susp > 0 ? 'susp' : null);
-/** Machuca o jogador por um número de dias sorteado (rand injetável nos testes). Devolve os dias. */
-function injure(s, now, rand = Math.random, days) {
+/** Machuca o jogador por um número de dias sorteado (rand injetável nos testes; o departamento médico encurta). Devolve os dias. */
+function injure(s, now, rand = Math.random, days, m = BASE) {
   if (days == null) { const r = rand(); days = r < 0.55 ? 1 : r < 0.85 ? 2 + Math.floor(rand() * 2) : 4 + Math.floor(rand() * 3); }
+  days = Math.round(days * m.injury * 10) / 10;
   s.injUntil = now + days * DAY;
   s.injKind = INJURY_KINDS[Math.floor(rand() * INJURY_KINDS.length)];
   return days;
@@ -123,20 +127,20 @@ function cards(s, yellows, red) {
 function serve(s) { if (s && s.susp > 0) { s.susp--; return true; } return false; }
 
 /** Por que o jogador não pode treinar agora (ou null). */
-function cannotTrain(p, s, focus, intensity, now) {
+function cannotTrain(p, s, focus, intensity, now, m = BASE) {
   if (injuredFor(s, now)) return p.name + ' está lesionado (' + s.injKind + ').';
   if (!focusFor(p).includes(focus)) return p.name + ': goleiro não treina ' + FOCUS[focus].toLowerCase() + '.';
   if ((s && s.gains[focus] || 0) >= TRAIN_MAX) return p.name + ' já está no máximo em ' + FOCUS[focus] + '.';
-  if (!sessionsLeft(s, now)) return p.name + ' já treinou ' + SESSIONS_PER_DAY + ' vezes hoje.';
-  const c = condition(s, now), it = INTENSITY[intensity];
+  if (!sessionsLeft(s, now, m)) return p.name + ' já treinou ' + m.sessions + ' vezes hoje.';
+  const c = condition(s, now, m), it = INTENSITY[intensity];
   if (c < it.min) return p.name + ' está com ' + Math.floor(c) + '% de condição (treino ' + it.label.toLowerCase() + ' pede ' + it.min + '%).';
   return null;
 }
 
 /** Aplica uma sessão (o estado precisa existir). Devolve { gain, injury } (injury = dias fora, se machucou no treino forte). */
-function train(p, s, focus, intensity, coach, now, rand = Math.random) {
-  const g = gainFor(p, s.gains, focus, intensity, coach);
-  checkpoint(s, now);
+function train(p, s, focus, intensity, coach, now, rand = Math.random, m = BASE) {
+  const g = gainFor(p, s.gains, focus, intensity, coach, m);
+  checkpoint(s, now, m);
   s.gains[focus] = round2((s.gains[focus] || 0) + g);
   s.fit = round2(Math.max(0, s.fit - INTENSITY[intensity].cost));
   s.rest = false;
@@ -144,31 +148,31 @@ function train(p, s, focus, intensity, coach, now, rand = Math.random) {
   s.sessions = s.day === d ? s.sessions + 1 : 1;
   s.day = d;
   let injury = 0;
-  if (intensity === 'hard' && rand() < TRAIN_INJURY.base + (s.fit < TRAIN_INJURY.below ? TRAIN_INJURY.tired : 0)) injury = injure(s, now, rand, rand() < 0.7 ? 1 : 2);
+  if (intensity === 'hard' && rand() < TRAIN_INJURY.base + (s.fit < TRAIN_INJURY.below ? TRAIN_INJURY.tired : 0)) injury = injure(s, now, rand, rand() < 0.7 ? 1 : 2, m);
   return { gain: g, injury };
 }
 
 /** Depois de uma partida: energy = { start, end } (0-1) do motor. Devolve a condição nova. */
-function afterMatch(s, energy, now) {
-  checkpoint(s, now);
+function afterMatch(s, energy, now, m) {
+  checkpoint(s, now, m);
   s.fit = round2(Math.max(0, s.fit - Math.max(0, energy.start - energy.end) * MATCH_COST));
   s.rest = false;
   return s.fit;
 }
 
-function setRest(s, on, now) { checkpoint(s, now); s.rest = !!on; }
+function setRest(s, on, now, m) { checkpoint(s, now, m); s.rest = !!on; }
 
 /** Fisioterapia: +PHYSIO de condição e, se estiver lesionado, um dia a menos de lesão. */
-function physio(s, now) {
-  checkpoint(s, now);
+function physio(s, now, m) {
+  checkpoint(s, now, m);
   s.fit = Math.min(100, s.fit + PHYSIO);
   s.physioDay = dayKey(now);
   if (injuredFor(s, now)) { s.injUntil -= DAY; if (s.injUntil <= now) { s.injUntil = 0; s.injKind = null; } }
 }
 
 /** O que a tela do clube precisa de cada jogador do elenco. */
-const view = (s, now) => {
-  const v = { cond: Math.floor(condition(s, now)), rest: !!(s && s.rest), left: sessionsLeft(s, now), physio: physioLeft(s, now) };
+const view = (s, now, m = BASE) => {
+  const v = { cond: Math.floor(condition(s, now, m)), rest: !!(s && s.rest), left: sessionsLeft(s, now, m), physio: physioLeft(s, now) };
   const inj = injuredFor(s, now);
   if (inj) { v.inj = Math.ceil(inj / 3600e3); v.injKind = s.injKind; } // horas que faltam
   if (s && s.susp) v.susp = s.susp;
@@ -184,6 +188,6 @@ const meta = () => ({
 
 module.exports = {
   FOCUS, KEYS, GK_FOCUS, INTENSITY, TRAIN_MAX, SESSIONS_PER_DAY, RECOVERY, REST_RECOVERY, PHYSIO, OVR_WEIGHT,
-  blank, condition, sessionsLeft, physioLeft, physioCost, trainOvr, autoFocus, gainFor, cannotTrain, train, afterMatch, setRest, physio, view, meta, dayKey,
-  injuredFor, unavailable, injure, cards, serve, YELLOW_LIMIT
+  blank, condition, checkpoint, sessionsLeft, physioLeft, physioCost, trainOvr, autoFocus, gainFor, cannotTrain, train, afterMatch, setRest, physio, view, meta, dayKey,
+  injuredFor, unavailable, injure, cards, serve, YELLOW_LIMIT, BASE
 };

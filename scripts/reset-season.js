@@ -1,6 +1,6 @@
 /*
  * Zera a temporada para um recomeço justo: todos os clubes voltam ao saldo inicial, sem jogadores, técnico, escalação,
- * pontos nem campanha; somem partidas, ligas, trocas, a "forma" dos jogadores e o treino/condição física. As CONTAS (nome do clube, senha, login com
+ * pontos nem campanha; somem partidas, ligas, trocas, a "forma" dos jogadores, o treino/condição física e as instalações. As CONTAS (nome do clube, senha, login com
  * Google e sessões) são mantidas, então ninguém precisa se cadastrar de novo. O catálogo de jogadores importados não muda.
  *
  * Antes de apagar, grava um backup em data/backup-temporada-<data>-<hora>.json (nunca sobrescreve um anterior).
@@ -42,7 +42,7 @@ const TABLES = ['clubs', 'club_players', 'matches', 'leagues', 'league_members',
   if (dropIds.length) { const { error } = await sb.from('clubs').delete().in('id', dropIds); if (error) throw new Error(error.message); console.log('Clubes removidos: ' + drop.join(', ')); }
 
   const { error } = await sb.from('clubs').update({
-    budget: R.START_BUDGET, coach: null, formation: '4-3-3', lineup: Array(11).fill(null), tactic: 'balanced', plan: [],
+    budget: R.START_BUDGET, coach: null, formation: '4-3-3', lineup: Array(11).fill(null), tactic: 'balanced', plan: [], facilities: {},
     points: 0, played: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0
   }).not('id', 'is', null);
   if (error) throw new Error('clubes: ' + error.message);

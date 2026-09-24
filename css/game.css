@@ -298,6 +298,24 @@ sup.up, sup.down { font-size: 9px; }
 .pstats .abar { display: flex; }
 .pstats .abar i.tr { flex: none; border-radius: 0 4px 4px 0; background: #c6f32b; }
 
+/* ---------- estrutura do clube ---------- */
+.fac-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+.fac { display: flex; flex-direction: column; gap: 10px; padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: rgba(255, 255, 255, .03); }
+.fac-head { display: flex; gap: 10px; align-items: flex-start; }
+.fac-head b { display: block; font-size: 15px; }
+.fac-head small { display: block; color: var(--muted); font-size: 12px; line-height: 1.35; }
+.fac-icon { font-size: 26px; line-height: 1; }
+.fac-level { display: flex; justify-content: space-between; align-items: center; font-size: 13px; color: var(--muted); }
+.fac-level b { color: var(--text); font-size: 16px; }
+.pips { display: flex; gap: 4px; }
+.pips i { width: 18px; height: 6px; border-radius: 3px; background: var(--line); }
+.pips i.on { background: linear-gradient(90deg, #6821dc, #ec4266); }
+.fac-eff { font-size: 13px; line-height: 1.4; }
+.fac-eff span { display: block; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; }
+.fac-eff.next { color: #c6f32b; }
+.fac-eff.done span { color: #75ce50; }
+.fac .btn { width: 100%; margin-top: auto; } /* botões alinhados no rodapé dos cartões */
+
 /* ---------- Centro de Treinamento ---------- */
 .train-help summary { cursor: pointer; margin: 2px 0 6px; color: var(--muted); font-size: 13px; }
 .train-help p { margin: 0 0 8px; }
