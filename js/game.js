@@ -16,6 +16,11 @@
   /** Seta de alta/baixa da forma (só aparece depois de alguns jogos). */
   const formTag = p => (p.form > 0.05 ? ' <sup class="up" title="Em alta: +' + p.form.toFixed(1) + ' pts">▲</sup>' : p.form < -0.05 ? ' <sup class="down" title="Em baixa: ' + p.form.toFixed(1) + ' pts">▼</sup>' : '');
   const price = p => Math.round(p.value * S.meta.buyPremium);
+  /** Condição física (0-100) de um jogador do meu elenco, se está em descanso e quantos treinos ainda faz hoje. */
+  const fitOf = id => (S.me && S.me.fitness && S.me.fitness[id]) || { cond: 100, rest: false, left: S.meta.training.sessionsPerDay, physio: true };
+  const fitClass = c => (c >= 80 ? 'f-good' : c >= 55 ? 'f-mid' : 'f-low');
+  const fitBar = c => '<span class="fitbar ' + fitClass(c) + '" title="Condição física ' + c + '%"><i style="width:' + c + '%"></i></span><b class="fitnum ' + fitClass(c) + '">' + c + '%</b>';
+  const num1 = v => v.toLocaleString('pt-BR', { maximumFractionDigits: 1 });
   const lsGet = k => { try { return localStorage.getItem(k); } catch (_) { return null; } };
   const lsSet = (k, v) => { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch (_) { /* ignora */ } };
 
@@ -264,6 +269,7 @@
       await loadCatalog();
       try { S.me = (await api('GET', '/api/me')).club; renderTop(); } catch (_) { /* segue */ } // sem mexer numa escalação em edição
       if (S.tab === 'squad') renderSquad();
+      if (S.tab === 'train') renderTrain();
       if (S.tab === 'exch') renderExchange();
       if (S.tab === 'market') renderMarket();
     });
@@ -359,10 +365,11 @@
     S.tab = t;
     for (const b of $('tabs').children) b.classList.toggle('on', b.dataset.tab === t);
     setMenu(false); centerTab();
-    for (const id of ['market', 'squad', 'lineup', 'clubs', 'leagues', 'stats', 'exch', 'matches']) $('tab-' + id).hidden = id !== t;
+    for (const id of ['market', 'squad', 'lineup', 'train', 'clubs', 'leagues', 'stats', 'exch', 'matches']) $('tab-' + id).hidden = id !== t;
     if (t === 'market') renderMarket();
     if (t === 'squad') renderSquad();
     if (t === 'lineup') renderLineup();
+    if (t === 'train') openTrain();
     if (t === 'clubs') loadClubs();
     if (t === 'leagues') loadLeagues();
     if (t === 'stats') loadStatsTab();
@@ -469,9 +476,9 @@
   function renderSquad() {
     const sq = S.me.squad.map(player).filter(Boolean).sort((a, b) => ['GK', 'DEF', 'MID', 'FWD'].indexOf(a.role) - ['GK', 'DEF', 'MID', 'FWD'].indexOf(b.role) || b.ovr - a.ovr);
     $('sqInfo').textContent = sq.length + ' jogadores · valor do elenco ' + money(sq.reduce((s, p) => s + p.value, 0)) + ' · compra com ágio de ' + Math.round((S.meta.buyPremium - 1) * 100) + '%, venda por ' + Math.round(S.meta.sellRatio * 100) + '% do valor de mercado.';
-    $('sqTable').innerHTML = '<tr class="rh"><th>Pos</th><th>Jogador</th><th>Clube de origem</th><th class="num">Nota</th><th class="num">Valor</th><th class="num">Venda</th><th></th></tr>' +
-      (sq.map(p => '<tr class="rc"><td class="c-pos"><span class="pos ' + p.role + '">' + p.pos + '</span></td><td class="c-name">' + avatar(p) + '<a href="#" class="plink" data-player="' + esc(p.id) + '">' + esc(p.name) + '</a></td><td class="c-club">' + esc(p.club) + '</td><td class="num ovr c-ovr">' + p.ovr + formTag(p) + '</td><td class="num c-val">' + money(p.value) + '</td><td class="num c-price">' + money(p.value * S.meta.sellRatio) + '</td><td class="c-act"><button class="btn danger sm" data-sell="' + esc(p.id) + '" type="button">Vender</button> <button class="btn sm" data-auc="' + esc(p.id) + '" type="button">Leiloar</button></td></tr>').join('') ||
-        '<tr><td colspan="7">Seu elenco está vazio. Vá ao Mercado e contrate jogadores.</td></tr>');
+    $('sqTable').innerHTML = '<tr class="rh"><th>Pos</th><th>Jogador</th><th>Clube de origem</th><th class="num">Nota</th><th>Condição</th><th class="num">Valor</th><th class="num">Venda</th><th></th></tr>' +
+      (sq.map(p => '<tr class="rc"><td class="c-pos"><span class="pos ' + p.role + '">' + p.pos + '</span></td><td class="c-name">' + avatar(p) + '<a href="#" class="plink" data-player="' + esc(p.id) + '">' + esc(p.name) + '</a></td><td class="c-club">' + esc(p.club) + '</td><td class="num ovr c-ovr">' + p.ovr + formTag(p) + '</td><td class="c-fit">' + fitBar(fitOf(p.id).cond) + (fitOf(p.id).rest ? ' <span class="tag rest">😴</span>' : '') + '</td><td class="num c-val">' + money(p.value) + '</td><td class="num c-price">' + money(p.value * S.meta.sellRatio) + '</td><td class="c-act"><button class="btn danger sm" data-sell="' + esc(p.id) + '" type="button">Vender</button> <button class="btn sm" data-auc="' + esc(p.id) + '" type="button">Leiloar</button></td></tr>').join('') ||
+        '<tr><td colspan="8">Seu elenco está vazio. Vá ao Mercado e contrate jogadores.</td></tr>');
     const c = S.me.coach && coach(S.me.coach);
     $('sqCoach').innerHTML = c
       ? '<a href="#" class="plink" data-player="' + esc(c.id) + '"><b>' + esc(c.name) + '</b></a> · nota ' + c.ovr + formTag(c) + ' · <button class="btn danger sm" data-sellc="' + esc(c.id) + '" type="button">Demitir (recebe ' + money(c.value * S.meta.sellRatio) + ')</button> <button class="btn sm" data-auc="' + esc(c.id) + '" type="button">Leiloar</button>'
@@ -517,10 +524,16 @@
     const facts = [['País', p.country], ['Idade', p.age ? p.age + ' anos' : null], ['Altura', p.height ? p.height + ' cm' : null], ['Pé', foot], ['Camisa', p.number]]
       .filter(x => x[1]).map(x => '<div><span>' + x[0] + '</span><b>' + esc(String(x[1])) + '</b></div>').join('');
     const bar = ((f.delta + f.max) / (2 * f.max)) * 100;
+    const T = S.meta.training;
+    const attr = s => '<div class="attr"><span>' + esc(s.label) + '</span><div class="abar"><i style="width:' + s.base + '%"></i>' + (s.gain ? '<i class="tr" style="width:' + Math.max(0, s.value - s.base) + '%"></i>' : '') + '</div><b>' + s.value + (s.gain ? '<small class="up" title="Ganho no treino"> +' + num1(s.gain) + '</small>' : '') + '</b></div>';
     const stats = r.coach
-      ? '<div class="pstats"><p class="muted">O técnico melhora ou piora as habilidades de todo o time: <b>' + (r.teamBonus >= 0 ? '+' : '') + r.teamBonus + '%</b> com a nota atual.</p></div>'
-      : '<div class="pstats">' + r.profile.stats.map(s => '<div class="attr"><span>' + esc(s.label) + '</span><div class="abar"><i style="width:' + s.value + '%"></i></div><b>' + s.value + '</b></div>').join('') +
-        (r.profile.estimated ? '<p class="muted small">Características estimadas a partir da nota geral e da posição.</p>' : '') + '</div>';
+      ? '<div class="pstats"><p class="muted">O técnico melhora ou piora as habilidades de todo o time: <b>' + (r.teamBonus >= 0 ? '+' : '') + r.teamBonus + '%</b> com a nota atual. Ele também muda o quanto os jogadores evoluem no treino.</p></div>'
+      : '<div class="pstats">' + r.profile.stats.map(attr).join('') +
+        '<p class="muted small">' + (r.profile.estimated ? 'Características estimadas a partir da nota geral e da posição. ' : '') + (r.training.ovr ? 'Em verde, o que o jogador ganhou no treino (já soma <b>+' + num1(r.training.ovr) + '</b> na nota).' : 'Treino no Centro de Treinamento soma até +' + r.training.max + ' em cada característica.') + '</p></div>';
+    const fz = r.fitness;
+    const fitHtml = !fz ? '' : '<div class="pfit"><div class="row-between"><b>Condição física</b><b class="fitnum ' + fitClass(fz.cond) + '">' + fz.cond + '%' + (fz.rest ? ' · 😴 em descanso' : '') + '</b></div>' +
+      '<span class="fitbar big ' + fitClass(fz.cond) + '"><i style="width:' + fz.cond + '%"></i></span>' +
+      '<p class="muted small">Entra em campo com essa energia e cansa ao longo do jogo (cansado, corre menos e erra mais). Recupera ' + T.recovery + '% por hora, ou ' + T.restRecovery + '% em descanso.</p></div>';
     const avatarBig = r.coach ? '<span class="avatar big"><i>' + esc(p.name.charAt(0)) + '</i></span>' : avatar(p).replace('avatar clickable', 'avatar big');
     const st = r.stats, tot = st && st.total;
     const chip = (label, v) => '<div><span>' + label + '</span><b>' + v + '</b></div>';
@@ -534,11 +547,138 @@
       (r.owner ? ' · <span class="tag">' + esc(r.owner.name) + '</span>' : ' · <span class="tag">Livre no mercado</span>') + '</div></div>' +
       '<div class="pscore"><span>Nota</span><b class="ovr">' + p.ovr + '</b></div></div>' +
       '<div class="pfacts">' + facts + '<div><span>Valor de mercado</span><b>' + money(p.value) + '</b></div><div><span>Contratar por</span><b>' + money(r.price.buy) + '</b></div><div><span>Vender por</span><b>' + money(r.price.sell) + '</b></div></div>' +
-      stats + statsHtml +
+      fitHtml + stats + statsHtml +
       '<div class="pform"><div class="row-between"><b>Forma</b><span class="' + (up ? 'up' : down ? 'down' : 'muted') + '">' + (up || down ? (up ? '▲ +' : '▼ ') + f.delta.toFixed(1) + ' pts · valor ' + (pct > 0 ? '+' : '') + pct + '%' : 'estável') + '</span></div>' +
       '<div class="fbar"><i style="left:' + bar + '%"></i></div>' +
       '<p class="muted small">Nota base ' + f.baseOvr + ' · valor base ' + money(f.baseValue) + '. Vitórias e boas atuações (defesas, desarmes, chutes no gol, passes de risco, gols) sobem a nota; derrotas, faltas, cartões e gols sofridos derrubam. Máximo de ±' + f.max + ' pts.</p></div>';
   }
+
+  /* ---------- Centro de Treinamento e área de descanso ---------- */
+  const trSel = new Set(); // jogadores marcados
+  let trIntensity = lsGet('fm-train-int') || 'normal', trHelpSet = false;
+  const ABBR = { shot: 'FIN', pass: 'PAS', dribble: 'DRI', def: 'DEF', speed: 'VEL', stamina: 'RES' };
+  const ROLE_ORDER = ['GK', 'DEF', 'MID', 'FWD'];
+  const trSquad = () => S.me.squad.map(player).filter(Boolean).sort((a, b) => ROLE_ORDER.indexOf(a.role) - ROLE_ORDER.indexOf(b.role) || b.ovr - a.ovr);
+  const physioCost = p => { const T = S.meta.training; return Math.max(T.physioMin, Math.round(p.value * T.physioRatio / 1e5) * 1e5); };
+  const patchPlayers = list => { for (const p of list || []) { const i = S.catalog.players.findIndex(x => x.id === p.id); if (i >= 0) S.catalog.players[i] = p; } };
+
+  async function openTrain() {
+    renderTrain();
+    try { S.me = (await api('GET', '/api/me')).club; renderTop(); if (S.tab === 'train') renderTrain(); } catch (_) { /* segue com o que já tem */ }
+  }
+
+  function renderTrain() {
+    const T = S.meta.training, sq = trSquad();
+    for (const id of [...trSel]) if (!S.me.squad.includes(id)) trSel.delete(id);
+    if (!T.intensity[trIntensity]) trIntensity = 'normal';
+    for (const b of $('trInt').children) b.classList.toggle('on', b.dataset.i === trIntensity);
+    if (!$('trFocus').options.length) {
+      $('trFocus').innerHTML = '<option value="auto">Automático (o que mais ajuda na posição)</option>' + Object.keys(T.focus).map(k => '<option value="' + k + '">' + T.focus[k] + '</option>').join('');
+      $('trFocus').value = T.focus[lsGet('fm-train-focus')] ? lsGet('fm-train-focus') : 'auto';
+    }
+    if (!trHelpSet) { trHelpSet = true; $('trHelpBox').open = !matchMedia('(max-width: 720px)').matches; } // no celular a explicação começa fechada
+    const it = T.intensity[trIntensity], c = S.me.coach && coach(S.me.coach);
+    const cf = c ? Math.max(0.8, Math.min(1.25, 1 + (c.ovr - 75) / 100)) : 0.85;
+    $('trHelp').textContent = 'Cada jogador treina até ' + T.sessionsPerDay + ' vezes por dia (renova à meia-noite de Brasília) e o que ele ganha fica com ele, inclusive a nota e o valor de mercado. ' +
+      'O treino gasta condição física, que volta ' + T.recovery + '% por hora (' + T.restRecovery + '% em descanso). Uma partida inteira gasta cerca de 25% a 30%, e quem entra em campo cansado corre menos e erra mais. ' +
+      'A fisioterapia devolve ' + T.physio + '% na hora (1 vez por dia; custa ' + Math.round(T.physioRatio * 100) + '% do valor do jogador).';
+    $('trIntHelp').textContent = it.label + ': cerca de +' + num1(it.gain * cf) + ' por sessão (rende menos perto do máximo de +' + T.trainMax + '), gasta ' + it.cost + '% de condição e pede pelo menos ' + it.min + '%. ' +
+      (c ? 'Seu técnico (' + c.short + ', nota ' + c.ovr + ') ' + (cf >= 1 ? 'aumenta' : 'reduz') + ' o ganho em ' + Math.round(Math.abs(cf - 1) * 100) + '%.' : 'Sem técnico, o treino rende 15% menos.') +
+      ' Até 21 anos o jogador evolui 30% mais rápido; depois dos 30, mais devagar.';
+    const xi = S.me.lineup.filter(id => id && S.me.squad.includes(id));
+    const avg = xi.length ? Math.round(xi.reduce((t, id) => t + fitOf(id).cond, 0) / xi.length) : null;
+    const resting = sq.filter(p => fitOf(p.id).rest).length, left = sq.reduce((t, p) => t + fitOf(p.id).left, 0);
+    $('trSummary').textContent = (avg != null ? 'Titulares: ' + avg + '% de condição · ' : '') + resting + ' em descanso · ' + left + ' treinos disponíveis hoje';
+    $('trTable').innerHTML = '<tr class="rh"><th class="c-chk"></th><th>Jogador</th><th>Condição</th><th class="num">Treinos hoje</th><th>Evolução no treino</th><th class="num">Nota</th></tr>' +
+      (sq.map(p => {
+        const f = fitOf(p.id), tr = p.train || {}, on = trSel.has(p.id);
+        const gains = Object.keys(ABBR).filter(k => tr[k]).map(k => '<span class="gchip" title="' + T.focus[k] + '">' + ABBR[k] + ' +' + num1(tr[k]) + '</span>').join('') || '<span class="muted small">ainda não treinou</span>';
+        const tags = (S.me.lineup.includes(p.id) ? ' <span class="tag">Titular</span>' : '') + (f.rest ? ' <span class="tag rest">😴 Descansando</span>' : '');
+        return '<tr class="rc' + (on ? ' sel' : '') + '" data-row="' + esc(p.id) + '"><td class="c-chk"><input type="checkbox" data-pick="' + esc(p.id) + '"' + (on ? ' checked' : '') + ' aria-label="Selecionar ' + esc(p.name) + '"></td>' +
+          '<td class="c-name"><span class="pos ' + p.role + '">' + p.pos + '</span> ' + avatar(p) + '<a href="#" class="plink" data-player="' + esc(p.id) + '">' + esc(p.name) + '</a>' + tags + '</td>' +
+          '<td class="c-fit">' + fitBar(f.cond) + '</td>' +
+          '<td class="num c-left">' + (f.left ? f.left + ' de ' + T.sessionsPerDay : '<span class="muted">só amanhã</span>') + '</td>' +
+          '<td class="c-gain">' + gains + '</td>' +
+          '<td class="num ovr c-ovr">' + p.ovr + formTag(p) + '</td></tr>';
+      }).join('') || '<tr><td colspan="6">Seu elenco está vazio. Contrate jogadores no Mercado para treiná-los.</td></tr>');
+    renderTrainActs();
+  }
+
+  /** Botões de ação com a quantidade de marcados (e o preço da fisioterapia). */
+  function renderTrainActs() {
+    const ids = [...trSel], n = ids.length;
+    const cost = ids.map(player).filter(p => p && fitOf(p.id).physio && fitOf(p.id).cond < 100).reduce((t, p) => t + physioCost(p), 0);
+    const allResting = n && ids.every(id => fitOf(id).rest);
+    $('trGo').textContent = 'Treinar' + (n ? ' (' + n + ')' : '');
+    $('trRest').textContent = (allResting ? 'Tirar do descanso' : 'Descansar') + (n ? ' (' + n + ')' : '');
+    $('trPhysio').textContent = 'Fisioterapia' + (cost ? ' (' + money(cost) + ')' : '');
+    for (const id of ['trGo', 'trRest', 'trPhysio']) $(id).disabled = !n;
+    $('trActs').classList.toggle('on', n > 0);
+  }
+
+  $('trTable').addEventListener('change', e => {
+    const id = e.target.dataset.pick;
+    if (!id) return;
+    if (e.target.checked) trSel.add(id); else trSel.delete(id);
+    e.target.closest('tr').classList.toggle('sel', e.target.checked);
+    renderTrainActs();
+  });
+  $('trTable').addEventListener('click', e => { // tocar no cartão também marca (o nome e a foto abrem a ficha)
+    if (e.target.closest('[data-player], input')) return;
+    const row = e.target.closest('[data-row]');
+    if (!row) return;
+    const box = row.querySelector('input');
+    box.checked = !box.checked;
+    box.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  $('trSel').onclick = e => {
+    const b = e.target.closest('[data-sel]');
+    if (!b) return;
+    const it = S.meta.training.intensity[trIntensity], k = b.dataset.sel;
+    trSel.clear();
+    for (const p of trSquad()) {
+      const f = fitOf(p.id), xi = S.me.lineup.includes(p.id);
+      if (k === 'all' || (k === 'xi' && xi) || (k === 'bench' && !xi) || (k === 'ready' && f.left > 0 && f.cond >= it.min) || (k === 'tired' && f.cond < 60)) trSel.add(p.id);
+    }
+    renderTrain();
+  };
+  $('trInt').onclick = e => {
+    const b = e.target.closest('[data-i]');
+    if (!b) return;
+    trIntensity = b.dataset.i; lsSet('fm-train-int', trIntensity);
+    renderTrain();
+  };
+  $('trFocus').onchange = () => lsSet('fm-train-focus', $('trFocus').value);
+
+  async function trainAct(btn, fn) {
+    btn.disabled = true;
+    try { await fn(); } catch (err) { fail(err); }
+    renderTop(); renderTrain();
+  }
+  $('trGo').onclick = () => trainAct($('trGo'), async () => {
+    const r = await api('POST', '/api/train', { ids: [...trSel], focus: $('trFocus').value, intensity: trIntensity });
+    S.me = r.club; patchPlayers(r.players);
+    const F = S.meta.training.focus;
+    const list = r.done.slice(0, 6).map(d => '<b>' + esc(d.name) + '</b> ' + F[d.focus] + ' +' + num1(d.gain)).join(' · ') + (r.done.length > 6 ? ' e mais ' + (r.done.length - 6) : '');
+    toast('🏋️ Treino feito: ' + list + (r.skipped.length ? '<br><small>Não treinaram: ' + r.skipped.slice(0, 3).map(esc).join(' ') + (r.skipped.length > 3 ? ' (e mais ' + (r.skipped.length - 3) + ')' : '') + '</small>' : ''));
+  });
+  $('trRest').onclick = () => trainAct($('trRest'), async () => {
+    const ids = [...trSel], on = !ids.every(id => fitOf(id).rest);
+    S.me = (await api('POST', '/api/rest', { ids, on })).club;
+    toast(on ? '😴 ' + ids.length + ' jogador(es) em descanso: recuperam ' + S.meta.training.restRecovery + '% por hora até treinarem ou jogarem de novo.' : 'Descanso encerrado para ' + ids.length + ' jogador(es).');
+  });
+  $('trPhysio').onclick = () => {
+    const T = S.meta.training;
+    const list = [...trSel].map(player).filter(p => p && fitOf(p.id).physio && fitOf(p.id).cond < 100);
+    if (!list.length) return toast('Nenhum dos marcados precisa (ou ainda pode) fazer fisioterapia hoje.', { err: true });
+    const cost = list.reduce((t, p) => t + physioCost(p), 0);
+    if (!confirm('Fisioterapia para ' + list.length + ' jogador(es) por ' + money(cost) + '? Cada um recupera ' + T.physio + '% de condição na hora.')) return;
+    trainAct($('trPhysio'), async () => {
+      const r = await api('POST', '/api/physio', { ids: list.map(p => p.id) });
+      S.me = r.club;
+      toast('💆 Fisioterapia (' + money(r.cost) + '): ' + r.done.map(d => '<b>' + esc(d.name) + '</b> ' + d.cond + '%').join(' · '));
+    });
+  };
 
   /* ---------- estatísticas e ficha do clube ---------- */
   const clubLink = c => '<a href="#" class="plink" data-club="' + esc(c.id) + '"><i class="cdot" style="background:' + esc(c.color || '#888') + '"></i>' + esc(c.name) + '</a>';
@@ -589,19 +729,20 @@
       const opts = squad.filter(p => (s.pos === 'GK') === (p.pos === 'GK')).sort((a, b) => (b.role === s.role) - (a.role === s.role) || b.ovr - a.ovr);
       const cur = S.lineup[i] && player(S.lineup[i]);
       return '<div class="slot"><span class="pos ' + s.role + '">' + s.pos + '</span>' + (cur ? avatar(cur) : '<span class="avatar"></span>') + '<select data-slot="' + i + '"><option value="">— vazio —</option>' +
-        opts.map(p => '<option value="' + esc(p.id) + '"' + (S.lineup[i] === p.id ? ' selected' : '') + '>' + esc(p.name) + ' (' + p.pos + ' · ' + p.ovr + (p.role !== s.role && s.pos !== 'GK' ? ' · fora de posição' : '') + ')</option>').join('') + '</select></div>';
+        opts.map(p => '<option value="' + esc(p.id) + '"' + (S.lineup[i] === p.id ? ' selected' : '') + '>' + esc(p.name) + ' · ' + fitOf(p.id).cond + '% (' + p.pos + ' · ' + p.ovr + (p.role !== s.role && s.pos !== 'GK' ? ' · fora de posição' : '') + ')</option>').join('') + '</select></div>';
     }).join('');
 
     const col = S.me.color, tc = textColor(col);
     $('luPitch').innerHTML = slots.map((s, i) => {
       const p = S.lineup[i] && player(S.lineup[i]);
       const photo = p && p.photo ? '<img src="' + esc(p.photo) + '" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">' : '';
-      return '<div class="pt' + (p ? ' clickable' : '') + '"' + (p ? ' data-player="' + esc(p.id) + '"' : '') + ' style="left:' + (s.fy * 100) + '%;top:' + (100 - s.fx * 100) + '%"><i class="' + (photo ? 'ph' : '') + '" style="background:' + col + ';color:' + tc + '">' + photo + '<b>' + (i + 1) + '</b></i><span>' + esc(p ? p.short : s.pos) + '</span></div>';
+      return '<div class="pt' + (p ? ' clickable' : '') + '"' + (p ? ' data-player="' + esc(p.id) + '"' : '') + ' style="left:' + (s.fy * 100) + '%;top:' + (100 - s.fx * 100) + '%"><i class="' + (photo ? 'ph' : '') + '" style="background:' + col + ';color:' + tc + '">' + photo + '<b>' + (i + 1) + '</b></i><span>' + esc(p ? p.short : s.pos) + '</span>' + (p ? '<em class="' + fitClass(fitOf(p.id).cond) + '" style="--c:' + fitOf(p.id).cond + '%" title="Condição física ' + fitOf(p.id).cond + '%"></em>' : '') + '</div>';
     }).join('');
 
     const chosen = S.lineup.map(id => id && player(id)).filter(Boolean);
     const avg = chosen.length ? Math.round(chosen.reduce((s, p) => s + p.ovr, 0) / chosen.length) : 0;
-    $('luOvr').textContent = chosen.length + '/11 escalados · nota média ' + avg;
+    const cond = chosen.length ? Math.round(chosen.reduce((s, p) => s + fitOf(p.id).cond, 0) / chosen.length) : 0;
+    $('luOvr').textContent = chosen.length + '/11 escalados · nota média ' + avg + (chosen.length ? ' · condição média ' + cond + '%' : '');
     renderTactics();
   }
 
@@ -620,9 +761,9 @@
     $('tcTacStyle').innerHTML = opts('attack');
     $('tcHelp').textContent = TAC_HELP[me.tactic || 'balanced'] || '';
     const slots = S.meta.formations[S.formation];
-    $('tcOut').innerHTML = S.lineup.map((id, i) => i > 0 && id ? '<option value="' + i + '">' + esc((player(id) || {}).short || '?') + ' (' + slots[i].pos + ')</option>' : '').join('');
+    $('tcOut').innerHTML = S.lineup.map((id, i) => i > 0 && id ? '<option value="' + i + '">' + esc((player(id) || {}).short || '?') + ' (' + slots[i].pos + ' · ' + fitOf(id).cond + '%)</option>' : '').join('');
     const bench = S.me.squad.map(player).filter(p => p && p.pos !== 'GK' && !S.lineup.includes(p.id)).sort((a, b) => b.ovr - a.ovr);
-    $('tcIn').innerHTML = bench.map(p => '<option value="' + esc(p.id) + '">' + esc(p.short) + ' (' + p.pos + ' · ' + p.ovr + ')</option>').join('') || '<option value="">Sem reservas no elenco</option>';
+    $('tcIn').innerHTML = bench.map(p => '<option value="' + esc(p.id) + '">' + esc(p.short) + ' (' + p.pos + ' · ' + p.ovr + ' · ' + fitOf(p.id).cond + '%)</option>').join('') || '<option value="">Sem reservas no elenco</option>';
     const plan = me.plan || [];
     $('tcPlan').innerHTML = plan.map((e, i) => {
       let txt;
@@ -680,7 +821,8 @@
       let best = null, bs = -1;
       for (const p of pool) {
         if (used.has(p.id) || (s.pos === 'GK') !== (p.pos === 'GK')) continue;
-        const sc = s.pos === 'GK' ? p.ovr : p.ovr * (p.pos === s.pos ? 1.05 : p.role === s.role ? 1 : 0.85);
+        // cansado rende menos em campo: a escalação automática prefere quem está descansado
+        const sc = (s.pos === 'GK' ? p.ovr : p.ovr * (p.pos === s.pos ? 1.05 : p.role === s.role ? 1 : 0.85)) * (0.7 + 0.3 * fitOf(p.id).cond / 100);
         if (sc > bs) { bs = sc; best = p; }
       }
       if (best) used.add(best.id);

@@ -1,6 +1,6 @@
 /*
  * Zera a temporada para um recomeço justo: todos os clubes voltam ao saldo inicial, sem jogadores, técnico, escalação,
- * pontos nem campanha; somem partidas, ligas, trocas e a "forma" dos jogadores. As CONTAS (nome do clube, senha, login com
+ * pontos nem campanha; somem partidas, ligas, trocas, a "forma" dos jogadores e o treino/condição física. As CONTAS (nome do clube, senha, login com
  * Google e sessões) são mantidas, então ninguém precisa se cadastrar de novo. O catálogo de jogadores importados não muda.
  *
  * Antes de apagar, grava um backup em data/backup-temporada-<data>-<hora>.json (nunca sobrescreve um anterior).
@@ -12,7 +12,7 @@ const path = require('path');
 const { createStore } = require('../server/store');
 const R = require('../server/rules');
 
-const TABLES = ['clubs', 'club_players', 'matches', 'leagues', 'league_members', 'league_fixtures', 'trades', 'player_form', 'player_stats'];
+const TABLES = ['clubs', 'club_players', 'matches', 'leagues', 'league_members', 'league_fixtures', 'trades', 'player_form', 'player_stats', 'player_training'];
 
 (async () => {
   if (!process.argv.includes('--yes')) { console.error('Isto apaga partidas, ligas, trocas, elencos e saldos. Confirme com --yes.'); process.exit(1); }
@@ -36,7 +36,7 @@ const TABLES = ['clubs', 'club_players', 'matches', 'leagues', 'league_members',
   console.log('Backup: ' + file + ' (' + TABLES.map(t => t + ' ' + backup[t].length).join(', ') + ')');
 
   const del = async (t, col) => { const { error } = await sb.from(t).delete().not(col, 'is', null); if (error) throw new Error('apagar ' + t + ': ' + error.message); };
-  for (const [t, col] of [['league_fixtures', 'id'], ['league_members', 'league_id'], ['leagues', 'id'], ['trades', 'id'], ['matches', 'id'], ['club_players', 'club_id'], ['player_form', 'player_id'], ['player_stats', 'player_id']]) await del(t, col);
+  for (const [t, col] of [['league_fixtures', 'id'], ['league_members', 'league_id'], ['leagues', 'id'], ['trades', 'id'], ['matches', 'id'], ['club_players', 'club_id'], ['player_form', 'player_id'], ['player_stats', 'player_id'], ['player_training', 'player_id']]) await del(t, col);
 
   const dropIds = backup.clubs.filter(c => drop.includes(c.name.toLowerCase())).map(c => c.id);
   if (dropIds.length) { const { error } = await sb.from('clubs').delete().in('id', dropIds); if (error) throw new Error(error.message); console.log('Clubes removidos: ' + drop.join(', ')); }

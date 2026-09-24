@@ -35,49 +35,75 @@ const TILT = {
 };
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
-/** Nota geral (ou atributos do Sofascore) -> multiplicadores usados pelo motor (nota 75 / atributo 60 = 1.0). */
+/** Desvio fixo (-2 a +2) de um jogador, diferente para cada característica (i), para jogadores de mesma nota não ficarem iguais. */
+function jitter(p) {
+  let h = 0;
+  for (const ch of String(p.id)) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return k => ((h >>> (k * 3)) % 5) - 2;
+}
+const baseOvr = p => p.ovr - (p.trainOvr || 0); // nota sem o treino (o treino entra característica por característica)
+/** Resistência (0-99) com o treino: vem da nota e da posição (o goleiro corre menos; o meio-campo, mais). */
+const staminaOf = p => clamp(Math.round(baseOvr(p) + ({ GK: -8, DEF: 0, MID: 3, FWD: -2 }[p.role] || 0) + jitter(p)(5)), 25, 99) + ((p.train && p.train.stamina) || 0);
+/** Resistência -> quanto o jogador cansa em campo (1 = normal; menos = cansa mais devagar). */
+const staminaRate = st => +clamp(1 + (72 - st) / 80, 0.6, 1.4).toFixed(3);
+
+/**
+ * Nota geral (ou atributos do Sofascore) -> multiplicadores usados pelo motor (nota 75 / atributo 60 = 1.0).
+ * O treino soma em cada característica o mesmo que a nota somaria (1 ponto = 1/60); velocidade e resistência treinadas mudam
+ * a velocidade máxima e o ritmo em que o jogador cansa (sta).
+ */
 function skillsFor(player, slotRole, coach) {
-  let ovr = player.ovr;
+  let ovr = baseOvr(player);
   const off = slotRole !== 'GK' && player.role !== slotRole; // fora de posição
   if (off) ovr *= 0.85;
   const cm = coach ? 1 + (coach.ovr - 75) / 400 : 1;
+  const tr = player.train || {};
+  const add = k => (tr[k] || 0) / 60 * (off ? 0.85 : 1);
   const skill = {};
   const a = player.attrs;
   if (a && player.role !== 'GK') {
     const f = v => 1 + ((typeof v === 'number' ? v : 60) - 60) / 70;
     const raw = { pass: f(a.creativity * 0.6 + a.technical * 0.4), shot: f(a.attacking), def: f(a.defending), dribble: f(a.technical) };
-    for (const k of Object.keys(raw)) skill[k] = +clamp(raw[k] * (off ? 0.85 : 1) * cm, 0.5, 1.6).toFixed(3);
+    for (const k of Object.keys(raw)) skill[k] = +clamp((raw[k] * (off ? 0.85 : 1) + add(k)) * cm, 0.5, 1.6).toFixed(3);
   } else {
     const base = 1 + (ovr - 75) / 60;
     const t = TILT[player.role];
-    for (const k of Object.keys(t)) skill[k] = +clamp(base * t[k] * cm, 0.5, 1.6).toFixed(3);
+    for (const k of Object.keys(t)) skill[k] = +clamp((base * t[k] + add(k)) * cm, 0.5, 1.6).toFixed(3);
   }
-  return { skill, speed: +(1 + (ovr - 75) / 400).toFixed(3) };
+  return { skill, speed: +(1 + (ovr - 75) / 400 + (tr.speed || 0) / 250).toFixed(3), sta: staminaRate(staminaOf(player)) };
 }
 
 /**
  * Características para exibir (0-99). Jogadores com atributos reais (Sofascore) mostram esses valores; os demais têm os números
  * derivados da nota geral, do papel em campo e de um pequeno desvio fixo por jogador (só para a tela: o motor usa skillsFor).
+ * Cada linha traz `base` (sem treino) e `gain` (pontos treinados).
  */
 function profileFor(p) {
+  const tr = p.train || {};
+  const row = (key, label, v) => {
+    const g = tr[key] || 0;
+    return { key, label, value: clamp(Math.round(v + g), 0, 99), base: clamp(Math.round(v), 0, 99), gain: +g.toFixed(1) };
+  };
+  const base = baseOvr(p), jit = jitter(p);
+  const speed = clamp(Math.round(base + ({ GK: -12, DEF: -2, MID: 0, FWD: 3 }[p.role] || 0) + jit(4)), 25, 99);
+  const stamina = staminaOf(p) - (tr.stamina || 0);
   if (p.attrs && p.role !== 'GK') {
     const L = { attacking: 'Ataque', technical: 'Técnica', tactical: 'Tática', defending: 'Defesa', creativity: 'Criatividade' };
-    return { estimated: false, stats: Object.keys(L).map(k => ({ key: k, label: L[k], value: clamp(Math.round(p.attrs[k] || 0), 0, 99) })) };
+    const G = { attacking: 'shot', technical: 'dribble', creativity: 'pass', defending: 'def' }; // treino que soma em cada atributo
+    return { estimated: false, stats: Object.keys(L).map(k => Object.assign(row(G[k] || k, L[k], p.attrs[k] || 0), { key: k }))
+      .concat([row('speed', 'Velocidade', speed), row('stamina', 'Resistência', stamina)]) };
   }
-  let h = 0;
-  for (const ch of String(p.id)) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
-  const jit = k => ((h >>> (k * 3)) % 5) - 2;
   const t = TILT[p.role] || TILT.MID;
-  const at = (k, i) => clamp(Math.round(p.ovr + (t[k] - 0.95) * 40 + jit(i)), 25, 99);
-  const speed = clamp(Math.round(p.ovr + ({ GK: -12, DEF: -2, MID: 0, FWD: 3 }[p.role] || 0) + jit(4)), 25, 99);
+  const at = (k, i) => clamp(Math.round(base + (t[k] - 0.95) * 40 + jit(i)), 25, 99);
   return {
     estimated: true,
     stats: [
-      { key: 'shot', label: 'Finalização', value: at('shot', 0) },
-      { key: 'pass', label: 'Passe', value: at('pass', 1) },
-      { key: 'dribble', label: 'Drible', value: at('dribble', 2) },
-      { key: 'def', label: p.role === 'GK' ? 'Defesa do gol' : 'Defesa', value: at('def', 3) },
-      { key: 'speed', label: 'Velocidade', value: speed }
+      row('shot', 'Finalização', at('shot', 0)),
+      row('pass', 'Passe', at('pass', 1)),
+      row('dribble', 'Drible', at('dribble', 2)),
+      row('def', p.role === 'GK' ? 'Defesa do gol' : 'Defesa', at('def', 3)),
+      row('speed', 'Velocidade', speed),
+      row('stamina', 'Resistência', stamina)
     ]
   };
 }
@@ -93,8 +119,11 @@ function gkColor(shirt) {
   return r > 180 && g > 150 ? '#22a06b' : '#f2c200';
 }
 
-/** Constrói a definição de time que o motor (Match) espera. */
-function buildTeamDef(club, lineup, formation, catalog) {
+/**
+ * Constrói a definição de time que o motor (Match) espera. `cond(id)`: condição física (0-100) de cada jogador; o motor começa
+ * a partida com a energia do jogador igual a ela (fit) e o faz cansar no ritmo `sta`.
+ */
+function buildTeamDef(club, lineup, formation, catalog, cond = () => 100) {
   const slots = FORMATIONS[formation];
   const coach = club.coach ? catalog.coachById.get(club.coach) : null;
   const shirt = club.color || '#d71920';
@@ -102,29 +131,31 @@ function buildTeamDef(club, lineup, formation, catalog) {
   return {
     name: club.name,
     tactic: TACTICS[club.tactic] ? club.tactic : 'balanced',
-    plan: buildPlan(club, lineup, formation, coach, catalog),
+    plan: buildPlan(club, lineup, formation, coach, catalog, cond),
     short: club.name.replace(/[^A-Za-zÀ-ú ]/g, '').split(' ').filter(Boolean).map(w => w[0]).join('').slice(0, 3).toUpperCase() || 'CLB',
     formation,
     coach: coach ? coach.name : null,
     colors: { shirt, number, trim: number === '#ffffff' ? '#ffffff' : '#111111', gk: gkColor(shirt), gkNumber: '#111111' },
     players: slots.map((s, i) => {
       const p = catalog.playerById.get(lineup[i]);
-      const { skill, speed } = skillsFor(p, s.role, coach);
-      return { num: i + 1, name: p.name, short: p.short, role: s.role, pos: s.pos, fx: s.fx, fy: s.fy, skill, speed, ovr: p.ovr };
+      const { skill, speed, sta } = skillsFor(p, s.role, coach);
+      return { num: i + 1, name: p.name, short: p.short, role: s.role, pos: s.pos, fx: s.fx, fy: s.fy, skill, speed, sta, fit: fitOf(cond, p.id), ovr: p.ovr };
     })
   };
 }
 
+const fitOf = (cond, id) => +(clamp(cond(id), 0, 100) / 100).toFixed(2);
+
 /** Plano de jogo: trocas e mudanças de tática nos minutos combinados (entradas inválidas são ignoradas). */
-function buildPlan(club, lineup, formation, coach, catalog) {
+function buildPlan(club, lineup, formation, coach, catalog, cond) {
   const slots = FORMATIONS[formation], out = [];
   let n = 0;
   for (const e of club.plan || []) {
     if (e.type === 'tactic') { if (TACTICS[e.style]) out.push({ min: e.min, type: 'tactic', style: e.style }); continue; }
     const slot = slots[e.out], p = catalog.playerById.get(e.in);
     if (!slot || e.out < 1 || !p || p.pos === 'GK' || !club.squad.includes(p.id) || lineup.includes(p.id)) continue;
-    const { skill, speed } = skillsFor(p, slot.role, coach);
-    out.push({ min: e.min, type: 'sub', out: e.out, in: { num: 12 + n++, name: p.name, short: p.short, skill, speed, ovr: p.ovr } });
+    const { skill, speed, sta } = skillsFor(p, slot.role, coach);
+    out.push({ min: e.min, type: 'sub', out: e.out, in: { num: 12 + n++, name: p.name, short: p.short, skill, speed, sta, fit: fitOf(cond, p.id), ovr: p.ovr } });
   }
   return out;
 }

@@ -186,6 +186,7 @@ function createStore() {
   async function flushNow() {
     if (timer) { clearTimeout(timer); timer = null; }
     for (let i = 0; i < 3; i++) { await flush(); if (!dirty && !running) break; }
+    await trainChain;
   }
 
   /* ---------- jogadores importados (busca ao vivo) ---------- */
@@ -211,7 +212,27 @@ function createStore() {
     upsert('player_stats', rows.map(r => Object.assign({}, r, { updated_at: new Date().toISOString() }))).catch(e => console.error('[supabase] player_stats:', e.message));
   }
 
-  return { sb, load, loadForm, saveForm, loadStats, saveStats, attach, save, flushNow, loadImported, saveImported, upsert, rows: { clubRow, matchRow, leagueRow, fixtureRow, tradeRow } };
+  /* ---------- treino e condição física ---------- */
+  const TRAIN_KEYS = ['shot', 'pass', 'dribble', 'def', 'speed', 'stamina'];
+  async function loadTraining() {
+    return new Map((await all('player_training', q => q.order('player_id'))).map(r => {
+      const gains = {};
+      for (const k of TRAIN_KEYS) if (r[k]) gains[k] = r[k];
+      return [r.player_id, { gains, fit: r.fit, fitAt: ms(r.fit_at), rest: r.resting, day: r.day, sessions: r.sessions, physioDay: r.physio_day }];
+    }));
+  }
+  let trainChain = Promise.resolve(); // em fila: a gravação mais nova de um jogador nunca é passada para trás por uma antiga
+  function saveTraining(rows) { // rows: [[id, estado]]
+    if (!rows.length) return;
+    const data = rows.map(([id, s]) => {
+      const r = { player_id: id, fit: s.fit, fit_at: iso(s.fitAt), resting: !!s.rest, day: s.day, sessions: s.sessions, physio_day: s.physioDay, updated_at: new Date().toISOString() };
+      for (const k of TRAIN_KEYS) r[k] = s.gains[k] || 0;
+      return r;
+    });
+    trainChain = trainChain.then(() => upsert('player_training', data)).catch(e => console.error('[supabase] player_training:', e.message));
+  }
+
+  return { sb, load, loadForm, saveForm, loadStats, saveStats, loadTraining, saveTraining, attach, save, flushNow, loadImported, saveImported, upsert, rows: { clubRow, matchRow, leagueRow, fixtureRow, tradeRow } };
 }
 
 module.exports = { createStore };

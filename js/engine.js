@@ -90,6 +90,14 @@
   };
   const TACTIC_NAMES = { balanced: 'equilibrado', attack: 'ofensivo', defend: 'retranca', counter: 'contra-ataque', press: 'pressão alta' };
 
+  /*
+   * Cansaço (só quando a definição do time traz a condição física "fit" dos jogadores; partidas antigas continuam iguais).
+   * A energia começa em fit (0-1) e cai a cada passo: um pouco parado e mais correndo perto da velocidade máxima, no ritmo
+   * "sta" (resistência: menos = cansa mais devagar). Abaixo de `limit` de energia o jogador fica mais lento e menos preciso
+   * (quem começa descansado só sente no fim do jogo; quem começa cansado sente o jogo todo).
+   */
+  const FATIGUE = { base: 0.0005, run: 0.0017, min: 0.15, halftime: 0.05, limit: 0.8, speedLoss: 0.3, skillLoss: 0.18 };
+
   class Player {
     constructor(team, d, idx) {
       this.team = team;
@@ -103,15 +111,32 @@
       this.fx = d.fx;
       this.fy = d.fy;
       const R = ROLE[d.role];
-      this.maxSpeed = R.speed * (d.speed || 1);
       this.accel = R.accel;
-      this.skill = Object.assign({ pass: 1, shot: 1, def: 1, dribble: 1 }, d.skill);
+      this._setup(d);
       this.x = 0; this.y = 0; this.vx = 0; this.vy = 0; this.face = 0;
       this.cooldown = 0;
       this.hold = 0;
       this.nextDecision = 1;
       this.yellow = 0;
       this.phase = rng() * 6.28;
+    }
+
+    /** Habilidades, velocidade e energia de quem está em campo (no início ou quando entra numa substituição). */
+    _setup(d) {
+      this.speed0 = ROLE[this.role].speed * (d.speed || 1);
+      this.maxSpeed = this.speed0;
+      this.skill0 = Object.assign({ pass: 1, shot: 1, def: 1, dribble: 1 }, d.skill);
+      this.skill = Object.assign({}, this.skill0);
+      this.energy = this.e0 = d.fit != null ? d.fit : 1;
+      this.sta = d.sta || 1;
+    }
+
+    /** Aplica a energia atual à velocidade e às habilidades. */
+    _tire() {
+      const f = this.energy < FATIGUE.limit ? (FATIGUE.limit - this.energy) / FATIGUE.limit : 0;
+      const k = 1 - FATIGUE.skillLoss * f, s = this.skill, s0 = this.skill0;
+      this.maxSpeed = this.speed0 * (1 - FATIGUE.speedLoss * f);
+      s.pass = s0.pass * k; s.shot = s0.shot * k; s.def = s0.def * k; s.dribble = s0.dribble * k;
     }
   }
 
@@ -130,6 +155,9 @@
       this.home.dir = 1;
       this.away.dir = -1;
       this.players = this.home.players.concat(this.away.players);
+      this.fatigue = [homeDef, awayDef].some(d => d.players.some(p => p.fit != null));
+      this.used = []; // energia de quem saiu por substituição
+      if (this.fatigue) for (const p of this.players) p._tire();
 
       this.ball = { x: L / 2, y: W / 2, vx: 0, vy: 0, owner: null, lastTeam: null, lastPlayer: null, receiver: null, shot: null };
       this.events = [];
@@ -177,6 +205,11 @@
     }
 
     get finished() { return this.state === 'fulltime'; }
+
+    /** Energia (0-1) no começo e no fim de cada jogador que atuou, inclusive quem saiu: [{ team, name, start, end }]. */
+    energyReport() {
+      return this.used.concat(this.players.map(p => ({ team: p.team.key, name: p.name, start: p.e0, end: +p.energy.toFixed(3) })));
+    }
 
     /* ---------- construção ---------- */
     _makeTeam(def, key) {
@@ -260,9 +293,10 @@
             this._emit({ type: 'tactic', team: t.key, style: e.style, text: t.name + ' muda para ' + TACTIC_NAMES[e.style] });
           } else if (e.type === 'sub' && e.out >= 1 && e.out < t.players.length && e.in) {
             const p = t.players[e.out], outP = { name: p.name, short: p.short };
+            this.used.push({ team: t.key, name: p.name, start: p.e0, end: +p.energy.toFixed(3) });
             p.name = e.in.name; p.short = e.in.short || e.in.name.split(' ').slice(-1)[0]; p.num = e.in.num;
-            p.skill = Object.assign({ pass: 1, shot: 1, def: 1, dribble: 1 }, e.in.skill);
-            p.maxSpeed = ROLE[p.role].speed * (e.in.speed || 1);
+            p._setup(e.in);
+            if (this.fatigue) p._tire();
             p.yellow = 0;
             this._emit({ type: 'sub', team: t.key, player: p, out: outP, text: 'Substituição no ' + t.name + ': sai ' + outP.name + ', entra ' + p.name });
           }
@@ -300,6 +334,7 @@
       if (poss) poss.stats.poss += dt;
 
       for (const p of this.players) if (p.cooldown > 0) p.cooldown -= dt;
+      if (this.fatigue) this._fatigue(dt);
 
       this._assignChasers();
       for (const t of this.teams) if (t.human) this._pickCtrl(t);
@@ -317,6 +352,15 @@
         this._updateDead(dt);
       } else {
         this._updateLive(dt);
+      }
+    }
+
+    /** Cansaço: a energia cai com o tempo e mais quando o jogador corre perto do máximo (só + - * /: determinístico). */
+    _fatigue(dt) {
+      for (const p of this.players) {
+        const r = (p.vx * p.vx + p.vy * p.vy) / (p.speed0 * p.speed0);
+        p.energy = Math.max(FATIGUE.min, p.energy - dt * p.sta * (FATIGUE.base + FATIGUE.run * r));
+        p._tire();
       }
     }
 
@@ -389,6 +433,7 @@
     /** Começa o 2º tempo (2) ou a prorrogação (3 e 4). Os times trocam de lado a cada período. */
     _startPeriod(h) {
       this.half = h;
+      if (this.fatigue) for (const p of this.players) { p.energy = Math.min(p.e0, p.energy + FATIGUE.halftime); p._tire(); } // fôlego no intervalo
       if (h === 2) { this.clock = 2700; this.halfLimit = 5400 + this.stoppage[1] * 60; }
       else if (h === 3) { this.clock = 5400; this.halfLimit = 6300; }
       else { this.clock = 6300; this.halfLimit = 7200; }
@@ -925,6 +970,6 @@
     }
   }
 
-  g.FootballEngine = { VERSION: 4, TACTICS: TACTIC_NAMES, Match, Player, PITCH: { L, W, GOAL_W, GY0, GY1 } };
+  g.FootballEngine = { VERSION: 5, TACTICS: TACTIC_NAMES, Match, Player, PITCH: { L, W, GOAL_W, GY0, GY1 } };
   if (typeof module !== 'undefined') module.exports = g.FootballEngine;
 })(typeof window !== 'undefined' ? window : globalThis);

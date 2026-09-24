@@ -154,6 +154,25 @@ button { -webkit-user-select: none; user-select: none; }
   .cards.mt .c-goals { grid-area: goals; display: block; padding: 0; background: none; border: 0; line-height: 1.35; font-size: 12px; }
   .cards.mt .c-goals:empty { display: none; }
 
+  /* elenco: condição física numa linha própria */
+  .cards.sq tr.rc { grid-template-areas: "pos name ovr" "pos club price" "pos val price" "pos fit fit" "act act act"; }
+  .cards.sq .c-fit { grid-area: fit; margin-top: 2px; }
+
+  /* Centro de Treinamento: cartão com a caixa de marcar à esquerda */
+  .cards.tr tr.rc { grid-template-columns: 26px minmax(0, 1fr) auto; grid-template-areas: "chk name ovr" "chk fit left" "chk gain gain"; row-gap: 6px; }
+  .cards.tr tr.rc.sel { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+  .cards.tr .c-chk { grid-area: chk; align-self: start; padding-top: 3px !important; }
+  .cards.tr .c-name { white-space: normal !important; }
+  .cards.tr .c-fit { grid-area: fit; }
+  .cards.tr .c-left { grid-area: left; text-align: right; font-size: 12px; color: var(--muted); white-space: nowrap !important; }
+  .cards.tr .c-left::before { content: 'treinos hoje: '; }
+  .cards.tr .c-gain { grid-area: gain; }
+  .train-sel .btn { flex: 1 1 calc(33% - 6px); }
+  .train-acts { display: grid; grid-template-columns: 1fr 1fr; bottom: calc(8px + var(--sab)); }
+  .train-acts:not(.on) { position: static; } /* só flutua quando há jogador marcado */
+  .train-acts .btn { min-width: 0; padding-left: 8px; padding-right: 8px; font-size: 13px; }
+  .train-acts #trGo { grid-column: 1 / -1; }
+
   /* classificação dos clubes e das ligas: só o essencial (o resto abre na ficha do clube) */
   .t-clubs :is(th, td):is(:nth-child(3), :nth-child(6), :nth-child(7), :nth-child(8), :nth-child(10), :nth-child(11)) { display: none; }
   .t-stand :is(th, td):is(:nth-child(5), :nth-child(6), :nth-child(7), :nth-child(8), :nth-child(9)) { display: none; }

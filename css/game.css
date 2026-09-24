@@ -273,3 +273,44 @@ sup.up, sup.down { font-size: 9px; }
 .pstat > b { display: block; margin-bottom: 8px; }
 .pstat .tbl.small { font-size: 12px; margin-top: 8px; }
 @media (max-width: 560px) { .stat-grid { grid-template-columns: 1fr; } }
+
+/* ---------- condição física ---------- */
+.fitbar { display: inline-block; width: 60px; height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; vertical-align: middle; margin-right: 6px; }
+.fitbar i { display: block; height: 100%; border-radius: 3px; }
+.fitbar.big { display: block; width: 100%; height: 8px; margin: 8px 0; }
+.fitbar.f-good i { background: #75ce50; } .mini-pitch .pt em.f-good { --fc: #75ce50; }
+.fitbar.f-mid i { background: #f2c200; } .mini-pitch .pt em.f-mid { --fc: #f2c200; }
+.fitbar.f-low i { background: #ec2e1a; } .mini-pitch .pt em.f-low { --fc: #ec2e1a; }
+.fitnum { font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.fitnum.f-good { color: #75ce50; } .fitnum.f-mid { color: #f2c200; } .fitnum.f-low { color: #ff6b5a; }
+.pfit { margin-bottom: 14px; }
+.pfit .fitnum { font-size: 14px; }
+.tag.rest { color: #9ecbff; }
+.mini-pitch .pt em { display: block; width: 30px; height: 4px; margin: 2px auto 0; border-radius: 2px; box-shadow: 0 0 0 1px rgba(0, 0, 0, .35);
+  background: linear-gradient(90deg, var(--fc) var(--c), rgba(0, 0, 0, .6) var(--c)); }
+/* ficha: parte da barra que veio do treino */
+.pstats .attr { grid-template-columns: 110px 1fr auto; }
+.pstats .attr b { min-width: 32px; text-align: right; white-space: nowrap; }
+.pstats .attr b small { font-size: 11px; font-weight: 600; }
+.pstats .abar { display: flex; }
+.pstats .abar i.tr { flex: none; border-radius: 0 4px 4px 0; background: #c6f32b; }
+
+/* ---------- Centro de Treinamento ---------- */
+.train-help summary { cursor: pointer; margin: 2px 0 6px; color: var(--muted); font-size: 13px; }
+.train-help p { margin: 0 0 8px; }
+.train-acts .btn { white-space: nowrap; }
+.cards.tr .c-name .plink { white-space: nowrap; }
+.train-ctrl { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: end; margin: 6px 0 4px; }
+.train-ctrl label { flex: 0 1 300px; }
+.train-ctrl select { width: 100%; }
+.train-int { display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
+.train-ctrl p { flex: 1 1 100%; margin: 0; }
+.train-sel { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 12px 0 8px; }
+.train-acts { position: sticky; bottom: 8px; z-index: 5; display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; padding: 10px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); }
+.train-acts.on { border-color: var(--accent); box-shadow: 0 8px 24px rgba(0, 0, 0, .45); }
+.tbl .c-chk { width: 28px; }
+.tbl .c-chk input { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); cursor: pointer; }
+.cards.tr tr.rc { cursor: pointer; }
+.cards.tr tr.sel td { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.cards.tr .c-name .pos { margin-right: 4px; }
+.gchip { display: inline-block; margin: 1px 4px 1px 0; padding: 1px 7px; border-radius: 999px; font-size: 11px; font-weight: 600; color: #c6f32b; background: rgba(198, 243, 43, .12); }

@@ -157,6 +157,12 @@
           c.textAlign = 'center'; c.textBaseline = 'middle';
           c.fillText(p.num, x, y + 0.5);
         }
+
+        if (m.fatigue && p.energy < 0.6) { // cansado: anel com o fôlego que resta (amarelo, e vermelho quando está no fim)
+          c.strokeStyle = p.energy < 0.4 ? 'rgba(255,90,70,0.95)' : 'rgba(255,205,40,0.95)';
+          c.lineWidth = Math.max(2, r * 0.26);
+          c.beginPath(); c.arc(x, y, r + c.lineWidth + 1, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * p.energy); c.stroke();
+        }
       }
 
       if (this.opts.showNames) {

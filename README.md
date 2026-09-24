@@ -82,7 +82,7 @@ O servidor valida a assinatura do token do Google (sem guardar senha); você pod
 ## Banco de dados (Supabase)
 Tudo o que precisa persistir (clubes, elencos, partidas, ligas/copas, trocas, jogadores importados) fica no projeto Supabase
 `futebol-manager`, nas tabelas `clubs`, `club_players`, `matches`, `leagues`, `league_members`, `league_fixtures`,
-`trades` e `imported_players` (RLS ligado, sem policies: só o servidor acessa).
+`trades`, `imported_players`, `player_form`, `player_stats` e `player_training` (RLS ligado, sem policies: só o servidor acessa).
 1. `npm install`
 2. Em Project Settings > API Keys do Supabase, copie a chave **service_role** e ponha em `config.local.json`
    (`supabaseServiceRoleKey`, veja `config.example.json`) ou na variável `SUPABASE_SERVICE_ROLE_KEY`. Nunca a exponha no navegador.
@@ -98,6 +98,25 @@ Depois de cada partida **entre jogadores** (a CPU é só teste), a nota de quem 
 - O valor de mercado acompanha (~6% por ponto de nota). A forma acumulada vai de −8 a +8 pontos e fica na tabela `player_form`.
   A nota efetiva já entra na simulação das partidas seguintes. Clicando em qualquer jogador ou técnico aparece a ficha
   (características, nota, valor, forma). Cada clube recebe um aviso com quem subiu e quem caiu.
+
+## Centro de Treinamento e condição física (aba "Treino")
+Cada jogador tem **condição física** (0 a 100%) e pode **treinar** para melhorar as características. Tudo fica com o jogador (se ele for vendido, vai junto)
+e está na tabela `player_training`.
+- **Treino:** escolha o foco (Finalização, Passe, Drible, Defesa, Velocidade, Resistência ou "Automático", o que mais ajuda na posição) e a intensidade:
+  Leve (+0,5 por sessão, gasta 8% de condição, pede 30%), Normal (+1, gasta 15%, pede 40%) ou Forte (+1,6, gasta 25%, pede 55%). Cada jogador treina até
+  **2 vezes por dia** (renova à meia-noite de Brasília). O ganho diminui perto do teto de **+10 por característica**; técnico bom rende mais (sem técnico, 15% menos)
+  e jogador de até 21 anos evolui 30% mais rápido (acima de 30, mais devagar; só vale para quem tem idade conhecida). Goleiro treina defesa do gol, passe,
+  velocidade e resistência.
+- **Efeito:** cada ponto treinado vale, naquela característica, o mesmo que um ponto de nota no motor; velocidade treinada aumenta a velocidade máxima e
+  resistência faz o jogador cansar mais devagar em campo. A nota geral sobe pela média do que importa na posição (tudo no teto = +8) e o valor de mercado acompanha.
+- **Condição física:** volta 4% por hora; em **descanso**, 8% por hora (sai do descanso ao treinar ou jogar). **Fisioterapia** devolve 30% na hora, 1 vez por dia,
+  e custa 2% do valor do jogador (mínimo € 1 M). Uma partida inteira entre jogadores gasta cerca de 25% a 30% (meio-campo corre mais; goleiro, menos).
+  Jogos contra a CPU e o "jogar você mesmo" não gastam condição.
+- **Na partida:** o jogador começa com a energia igual à condição e cansa ao longo do jogo (mais quando corre no limite). Abaixo de 80% de energia ele fica
+  mais lento e menos preciso; no intervalo recupera um pouco. No campo, um anel amarelo (vermelho no fim do fôlego) mostra quem está cansado. Nas simulações,
+  um time descansado contra outro igual com 75% de condição vence 46% e perde 20%; com 50%, vence 61% e perde 16%. Entre dois times descansados a média de gols
+  fica igual à de antes. A CPU entra sempre descansada. Elenco, escalação (e a escalação automática, que prefere quem está descansado) e a ficha mostram a condição.
+- Partidas gravadas antes deste recurso continuam idênticas ao rever (o cansaço só liga quando a partida traz a condição dos jogadores). Motor: versão 5.
 
 ## Estatísticas (artilharia e assistências)
 Aba **Estatísticas**: Artilharia, Assistências, Gols + assistências e Goleiros (jogos sem sofrer gol e defesas), com o clube de cada jogador.
@@ -121,7 +140,7 @@ as estatísticas ficam registradas em cada clube por onde passou. Nas ligas e co
 
 ## Recomeçar a temporada
 `node scripts/reset-season.js --yes` (com o servidor parado ou reiniciado logo depois) devolve todos os clubes ao saldo inicial, sem
-elenco, técnico, pontos, partidas, ligas, trocas nem forma. As contas são mantidas (cada técnico entra com o mesmo nome e senha e refaz o time do zero).
+elenco, técnico, pontos, partidas, ligas, trocas, forma nem treino/condição física. As contas são mantidas (cada técnico entra com o mesmo nome e senha e refaz o time do zero).
 Faz backup em `data/backup-temporada-<data>-<hora>.json` (nunca sobrescreve um anterior). `--drop="Clube A,Clube B"` remove clubes inteiros (ex.: os de teste).
 Como o servidor guarda tudo em memória, reinicie o serviço no Render logo depois (um novo deploy já reinicia).
 

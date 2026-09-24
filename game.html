@@ -76,6 +76,7 @@
             <button data-tab="market" class="on" type="button">Mercado</button>
             <button data-tab="squad" type="button">Elenco</button>
             <button data-tab="lineup" type="button">Escalação</button>
+            <button data-tab="train" type="button">Treino</button>
             <button data-tab="clubs" type="button">Clubes</button>
             <button data-tab="leagues" type="button">Ligas</button>
             <button data-tab="stats" type="button">Estatísticas</button>
@@ -166,6 +167,23 @@
             <button class="btn sm" type="submit">Adicionar mudança</button>
           </form>
           <p class="muted">A troca ou mudança acontece na primeira bola parada depois do minuto combinado (o intervalo também vale). Até 5 trocas e 3 mudanças de tática.</p>
+        </div>
+      </section>
+
+      <section id="tab-train" class="card" hidden>
+        <div class="row-between"><h2>🏋️ Centro de Treinamento</h2><span class="muted" id="trSummary"></span></div>
+        <details class="train-help" id="trHelpBox"><summary>Como funcionam o treino e a condição física</summary><p class="muted" id="trHelp"></p></details>
+        <div class="train-ctrl">
+          <label>Foco do treino <select id="trFocus"></select></label>
+          <div class="train-int"><span>Intensidade</span><div class="seg" id="trInt"><button data-i="light" type="button">Leve</button><button data-i="normal" class="on" type="button">Normal</button><button data-i="hard" type="button">Forte</button></div></div>
+          <p class="muted small" id="trIntHelp"></p>
+        </div>
+        <div class="train-sel" id="trSel"><span class="muted">Selecionar:</span><button class="btn sm" data-sel="all" type="button">Todos</button><button class="btn sm" data-sel="xi" type="button">Titulares</button><button class="btn sm" data-sel="bench" type="button">Reservas</button><button class="btn sm" data-sel="ready" type="button">Podem treinar</button><button class="btn sm" data-sel="tired" type="button">Cansados</button><button class="btn sm" data-sel="none" type="button">Nenhum</button></div>
+        <div class="table-wrap"><table class="tbl cards tr" id="trTable"></table></div>
+        <div class="train-acts" id="trActs">
+          <button class="btn primary" id="trGo" type="button">Treinar</button>
+          <button class="btn" id="trRest" type="button">Descansar</button>
+          <button class="btn" id="trPhysio" type="button">Fisioterapia</button>
         </div>
       </section>
 
