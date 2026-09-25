@@ -46,6 +46,7 @@
       if (kind === 'cross') return 'cruza';
       if (kind === 'long') return 'lança';
       if (kind === 'back') return 'recua';
+      if (kind === 'through') return 'enfia a bola';
       return this._pick(['toca', 'toca', 'rola', 'passa']);
     }
     _seq(chain) { return chain.map(c => this.nm(c.from) + ' ' + this._verb(c.kind) + ' para ' + this.nm(c.to)).join(', '); }
@@ -81,7 +82,8 @@
       if (ev.type === 'shot') {
         const last = this.recent[this.recent.length - 1];
         if (last && !last.told && last.team === ev.team && last.to !== p && last.from !== p && T - last.t <= 4) last.to = p;
-        const linked = !!last && last.to === p && last.team === ev.team && T - last.t <= 6;
+        const setPiece = ev.kind === 'pen' || ev.kind === 'fk'; // bola parada: não herda a jogada de antes da falta
+        const linked = !setPiece && !!last && last.to === p && last.team === ev.team && T - last.t <= 6;
         const lead = [];
         if (linked) {
           // só passes encadeados do mesmo time (quem recebeu é quem passa em seguida) e ainda não narrados
@@ -92,13 +94,22 @@
           }
         }
         if (linked && lead.length) { for (const c of lead) c.told = true; this.chain = []; } else this._flush(ev, out, 1);
-        this.shotCtx = { shooter: p, lead, assist: linked && last.from !== p ? last.from : null, t: T };
+        this.shotCtx = { shooter: p, lead, assist: linked && last.from !== p ? last.from : null, t: T, kind: ev.kind || null };
         const who = this.nm(p), seq = lead.length ? this._seq(lead) + ', que ' : who + ' ';
-        let text;
-        if (ev.outcome === 'block') text = seq + 'finaliza e a zaga bloqueia!';
-        else if (ev.outcome === 'miss') text = seq + 'chuta, mas a bola passa longe do gol.';
-        else text = seq + this._pick(['finaliza!', 'chuta forte!', 'arrisca o chute!']);
-        const sh = ev.outcome === 'block' ? who + ' finaliza e a zaga bloqueia!' : ev.outcome === 'miss' ? who + ' chuta para fora!' : who + ' ' + this._pick(['finaliza!', 'chuta forte!', 'arrisca!']);
+        let text, sh;
+        if (ev.kind === 'pen') { // pênalti e falta direta: bola parada, sem jogada antes
+          text = sh = ev.outcome === 'miss' ? who + ' bate o pênalti para fora!' : who + ' ' + this._pick(['bate o pênalti!', 'parte para a cobrança!']);
+        } else if (ev.kind === 'fk') {
+          text = sh = ev.outcome === 'block' ? who + ' cobra a falta e a bola explode na barreira!' : ev.outcome === 'miss' ? who + ' cobra a falta por cima do gol.' : who + ' ' + this._pick(['cobra a falta direto para o gol!', 'bate a falta com efeito!']);
+        } else if (ev.kind === 'head') {
+          text = seq + (ev.outcome === 'block' ? 'cabeceia e a zaga afasta!' : ev.outcome === 'miss' ? 'cabeceia para fora!' : this._pick(['sobe e cabeceia!', 'testa firme!']));
+          sh = who + (ev.outcome === 'block' ? ' cabeceia e a zaga afasta!' : ev.outcome === 'miss' ? ' cabeceia para fora!' : ' cabeceia!');
+        } else {
+          if (ev.outcome === 'block') text = seq + 'finaliza e a zaga bloqueia!';
+          else if (ev.outcome === 'miss') text = seq + 'chuta, mas a bola passa longe do gol.';
+          else text = seq + this._pick(['finaliza!', 'chuta forte!', 'arrisca o chute!']);
+          sh = ev.outcome === 'block' ? who + ' finaliza e a zaga bloqueia!' : ev.outcome === 'miss' ? who + ' chuta para fora!' : who + ' ' + this._pick(['finaliza!', 'chuta forte!', 'arrisca!']);
+        }
         out.push({ min: ev.min, type: 'shot', text: text.charAt(0).toUpperCase() + text.slice(1), vtext: sh, voice: true, big: false, prio: 2 });
         return out;
       }
@@ -116,7 +127,8 @@
           const assist = ctx && !ctx.lead.length && ctx.assist ? ' Assistência de ' + this.nm(ctx.assist) + '.' : '';
           const who = p ? p.name : this._team(ev.team);
           const head = this._pick(['GOOOOL!', 'É GOL!', 'GOLAÇO!', 'BALANÇOU A REDE!']);
-          const body = ev.og ? head + ' Gol contra de ' + who + '!' : head + ' ' + who + ' marca para o ' + this._team(ev.team) + '!';
+          const how = ctx && ctx.kind ? { pen: ' de pênalti', fk: ' de falta', head: ' de cabeça' }[ctx.kind] || '' : '';
+          const body = ev.og ? head + ' Gol contra de ' + who + '!' : head + ' ' + who + ' marca' + how + ' para o ' + this._team(ev.team) + '!';
           out.push({ min: ev.min, type: 'goal', text: (lead ? lead.charAt(0).toUpperCase() + lead.slice(1) : '') + body + assist + ' ' + this._score() + '.', vtext: (lead ? lead.charAt(0).toUpperCase() + lead.slice(1) : '') + body + assist, voice: true, big: true, prio: 3 });
           this.shotCtx = null;
           break;
@@ -148,6 +160,10 @@
           break;
         case 'foul':
           out.push({ min: ev.min, type: ev.type, text: ev.text + '.', voice: false, big: false, prio: 0 });
+          break;
+        case 'penalty':
+          out.push({ min: ev.min, type: ev.type, text: 'PÊNALTI para o ' + this._team(ev.team) + '! ' + (ev.by ? this.nm(ev.by) + ' derruba ' : 'Falta em ') + this.nm(ev.fouled) + ' dentro da área. ' + this.nm(p) + ' vai para a cobrança.',
+            vtext: 'Pênalti para o ' + this._team(ev.team) + '!', voice: true, big: true, prio: 3 });
           break;
         case 'yellow':
           out.push({ min: ev.min, type: ev.type, text: 'Cartão amarelo para ' + (p ? p.name : 'o jogador') + '.', voice: true, big: false, prio: 2 });

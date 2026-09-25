@@ -48,9 +48,16 @@ const staminaOf = p => clamp(Math.round(baseOvr(p) + ({ GK: -8, DEF: 0, MID: 3, 
 const staminaRate = st => +clamp(1 + (72 - st) / 80, 0.6, 1.4).toFixed(3);
 
 /**
+ * Craques se destacam mais (regras v7): cada habilidade fica SPREAD vezes mais longe da média (1.0) e a velocidade, SPEED_SPREAD
+ * vezes. Medido em simulações: com a escala antiga um time 4 pontos de nota melhor vencia só 37% dos jogos; com esta, 50%.
+ */
+const SPREAD = 2.5, SPEED_SPREAD = 3;
+const spread = v => clamp(1 + (v - 1) * SPREAD, 0.4, 2.2);
+
+/**
  * Nota geral (ou atributos do Sofascore) -> multiplicadores usados pelo motor (nota 75 / atributo 60 = 1.0).
- * O treino soma em cada característica o mesmo que a nota somaria (1 ponto = 1/60); velocidade e resistência treinadas mudam
- * a velocidade máxima e o ritmo em que o jogador cansa (sta).
+ * O treino soma em cada característica o mesmo que a nota somaria (1 ponto = 1/60, antes da ampliação SPREAD); velocidade e
+ * resistência treinadas mudam a velocidade máxima e o ritmo em que o jogador cansa (sta).
  */
 function skillsFor(player, slotRole, coach) {
   let ovr = baseOvr(player);
@@ -64,13 +71,13 @@ function skillsFor(player, slotRole, coach) {
   if (a && player.role !== 'GK') {
     const f = v => 1 + ((typeof v === 'number' ? v : 60) - 60) / 70;
     const raw = { pass: f(a.creativity * 0.6 + a.technical * 0.4), shot: f(a.attacking), def: f(a.defending), dribble: f(a.technical) };
-    for (const k of Object.keys(raw)) skill[k] = +clamp((raw[k] * (off ? 0.85 : 1) + add(k)) * cm, 0.5, 1.6).toFixed(3);
+    for (const k of Object.keys(raw)) skill[k] = +spread(clamp((raw[k] * (off ? 0.85 : 1) + add(k)) * cm, 0.5, 1.6)).toFixed(3);
   } else {
     const base = 1 + (ovr - 75) / 60;
     const t = TILT[player.role];
-    for (const k of Object.keys(t)) skill[k] = +clamp((base * t[k] + add(k)) * cm, 0.5, 1.6).toFixed(3);
+    for (const k of Object.keys(t)) skill[k] = +spread(clamp((base * t[k] + add(k)) * cm, 0.5, 1.6)).toFixed(3);
   }
-  return { skill, speed: +(1 + (ovr - 75) / 400 + (tr.speed || 0) / 250).toFixed(3), sta: staminaRate(staminaOf(player)) };
+  return { skill, speed: +(1 + ((ovr - 75) / 400 + (tr.speed || 0) / 250) * SPEED_SPREAD).toFixed(3), sta: staminaRate(staminaOf(player)) };
 }
 
 /**
@@ -123,8 +130,10 @@ function gkColor(shirt) {
  * Constrói a definição de time que o motor (Match) espera. `cond(id)`: condição física (0-100) de cada jogador; o motor começa
  * a partida com a energia do jogador igual a ela (fit) e o faz cansar no ritmo `sta`.
  * opts.bench: ids dos reservas disponíveis (entram sozinhos no lugar de quem se machucar); opts.injuries: a partida tem lesões
- * (só as oficiais); opts.skip: ids que não podem entrar (lesionados/suspensos) nas trocas planejadas.
- * v: versão das regras (6 = cartão vermelho, lesões e troca automática do lesionado).
+ * (só as oficiais); opts.skip: ids que não podem entrar (lesionados/suspensos) nas trocas planejadas; opts.crowd: fração a mais nas
+ * habilidades pela torcida (só o mandante em partida oficial; vem do nível do estádio).
+ * v: versão das regras (6 = cartão vermelho, lesões e troca automática do lesionado; 7 = pênalti, falta direta, bola aérea,
+ * toque rápido, lançamento em profundidade, mira a partir da bola e torcida — ver engine.js).
  */
 function buildTeamDef(club, lineup, formation, catalog, cond = () => 100, opts = {}) {
   const slots = FORMATIONS[formation];
@@ -136,7 +145,8 @@ function buildTeamDef(club, lineup, formation, catalog, cond = () => 100, opts =
     return { num: 12 + i, id: p.id, name: p.name, short: p.short, role: p.role, pos: p.pos, skill, speed, sta, fit: fitOf(cond, p.id), ovr: p.ovr };
   });
   return {
-    v: 6, injuries: !!opts.injuries,
+    v: 7, injuries: !!opts.injuries,
+    ...(opts.crowd ? { crowd: opts.crowd } : {}),
     name: club.name,
     tactic: TACTICS[club.tactic] ? club.tactic : 'balanced',
     plan: buildPlan(club, lineup, formation, coach, catalog, cond, opts.skip, bench),

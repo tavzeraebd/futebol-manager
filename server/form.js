@@ -43,8 +43,8 @@ class Tally {
       case 'save': e.saves++; break;
       case 'steal': e.steals++; this.last[other] = null; break; // quem perdeu a bola não constrói mais jogada
       case 'intercept': e.intercepts++; this.last[other] = null; break;
-      case 'pass': e.passes++; if (ev.kind === 'cross' || ev.kind === 'long') e.risky++; this.last[ev.team] = { from: p.name, to: ev.to && ev.to.name, t: ev.t }; this.last[other] = null; break;
-      case 'foul': e.fouls++; break;
+      case 'pass': e.passes++; if (ev.kind === 'cross' || ev.kind === 'long' || ev.kind === 'through') e.risky++; this.last[ev.team] = { from: p.name, to: ev.to && ev.to.name, t: ev.t }; this.last[other] = null; break;
+      case 'foul': e.fouls++; this.last.home = this.last.away = null; break; // bola parada: a jogada anterior não dá assistência (pênalti, falta direta)
       case 'yellow': e.yellow++; break;
       case 'red': e.red++; break;
       case 'injury': e.injured = true; break;

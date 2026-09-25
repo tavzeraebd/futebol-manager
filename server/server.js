@@ -101,7 +101,7 @@ function matchSide(club, official) {
     cond: id => (hurt.has(id) ? Math.min(50, condOf_(id)) : condOf_(id))
   };
 }
-const sideDef = (club, side) => R.buildTeamDef(club, side.lineup, club.formation, catalog, side.cond, { bench: side.bench, injuries: side.injuries, skip: side.skip });
+const sideDef = (club, side) => R.buildTeamDef(club, side.lineup, club.formation, catalog, side.cond, { bench: side.bench, injuries: side.injuries, skip: side.skip, crowd: side.crowd });
 
 /* ---------- partidas ---------- */
 function simulate(homeDef, awayDef, seed, knockout) {
@@ -144,6 +144,7 @@ const liveSession = id => { const s = sessions.get(id); return s && Date.now() -
 
 function playMatch(home, awayClub, isCpu, opts = {}) {
   const sides = { home: matchSide(home, !isCpu), away: isCpu ? null : matchSide(awayClub, true) };
+  if (!isCpu) sides.home.crowd = FAC.crowd(home.facilities); // torcida do mandante (como a bilheteria, só em partida oficial)
   const homeDef = sideDef(home, sides.home);
   const awayDef = isCpu ? cpuDef(sides.home.lineup) : sideDef(awayClub, sides.away);
   const seed = crypto.randomInt(1, 2 ** 31);

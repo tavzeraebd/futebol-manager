@@ -107,6 +107,18 @@
   const CARDS = { red: 0.015, yellow: 0.22 };
   const INJURY = { base: 0.004, tired: 2, fouled: 3 };
   const MAX_SUBS = 5;
+
+  /*
+   * Regras da versão 7 (só quando as duas definições de time trazem v >= 7; partidas antigas continuam iguais):
+   * - chute e passe miram a partir da bola (antes miravam do corpo do jogador e chute "para fora" às vezes entrava);
+   * - chance de gol por chute calibrada (xg/xgCap); pênalti para falta sofrida dentro da área que o time ataca;
+   * - falta direta: perto da área o melhor finalizador pode bater direto para o gol (com barreira);
+   * - bola aérea: chute travado sai mais para escanteio, escanteio vira cruzamento na área e cruzamento é finalizado de primeira;
+   * - toque rápido: pressionado de perto, o jogador solta a bola antes do desarme;
+   * - lançamento em profundidade: passe no espaço à frente do atacante quando ele ganha a corrida do marcador;
+   * - torcida: o mandante recebe def.crowd (fração) a mais nas habilidades.
+   */
+  const V7 = { xg: 0.26, xgCap: 0.36, xgMax: 0.8, foul: 0.2, pressDist: 2.2, pressHold: 0.35, blockCorner: 0.55, headerRange: 16, fkRange: 30, fkShoot: 0.6, wall: 9.15, crowdMax: 0.15 };
   const OFF = { x: -40, y: -40 }; // onde fica quem foi expulso (fora do campo e longe de qualquer lance)
 
   class Player {
@@ -137,6 +149,7 @@
       this.speed0 = ROLE[this.role].speed * (d.speed || 1);
       this.maxSpeed = this.speed0;
       this.skill0 = Object.assign({ pass: 1, shot: 1, def: 1, dribble: 1 }, d.skill);
+      if (this.team.boost) for (const k of Object.keys(this.skill0)) this.skill0[k] *= 1 + this.team.boost; // torcida do mandante (v7)
       this.skill = Object.assign({}, this.skill0);
       this.energy = this.e0 = d.fit != null ? d.fit : 1;
       this.sta = d.sta || 1;
@@ -158,6 +171,7 @@
       this.rng = this.opts.seed != null ? mulberry32(this.opts.seed >>> 0) : Math.random;
       rng = this.rng;
       this.listeners = [];
+      this.rules = Math.min(homeDef.v || 0, awayDef.v || 0); // antes dos times: a torcida (v7) entra nas habilidades
       this.teams = [this._makeTeam(homeDef, 'home'), this._makeTeam(awayDef, 'away')];
       this.home = this.teams[0];
       this.away = this.teams[1];
@@ -167,7 +181,6 @@
       this.away.dir = -1;
       this.players = this.home.players.concat(this.away.players);
       this.fatigue = [homeDef, awayDef].some(d => d.players.some(p => p.fit != null));
-      this.rules = Math.min(homeDef.v || 0, awayDef.v || 0);
       this.injuries = this.rules >= 6 && !!homeDef.injuries && !!awayDef.injuries;
       this.used = []; // energia de quem saiu por substituição
       if (this.fatigue) for (const p of this.players) p._tire();
@@ -232,7 +245,8 @@
         human: false, ctrl: null, input: { dx: 0, dy: 0, sprint: false }, act: null,
         tactic: TACTICS[def.tactic] ? def.tactic : 'balanced', plan: (def.plan || []).slice().sort((a, b) => a.min - b.min), planIdx: 0,
         bench: (def.bench || []).slice(), benchUsed: new Set(), subs: 0,
-        stats: { shots: 0, onTarget: 0, passes: 0, corners: 0, fouls: 0, yellow: 0, red: 0, poss: 0 }
+        boost: this.rules >= 7 ? clamp(+def.crowd || 0, 0, V7.crowdMax) : 0,
+        stats: { shots: 0, onTarget: 0, passes: 0, passOk: 0, corners: 0, fouls: 0, yellow: 0, red: 0, poss: 0 }
       };
       t.tac = TACTICS[t.tactic];
       def.players.forEach((d, i) => t.players.push(new Player(t, d, i)));
@@ -274,7 +288,8 @@
       b.lastTeam = team;
       this.possTeam = team;
       this.state = 'dead';
-      this.stateTimer = type === 'kickoff' ? 2.5 : 1.6;
+      this.stateTimer = type === 'kickoff' ? 2.5 : type === 'penalty' ? 3 : 1.6;
+      this._passFrom = null; // passe em andamento que terminou em bola parada não conta como certo
       const taker = this._pickTaker(type, team, spot);
       this.restart = { type, team, spot, taker, wait: 0 };
     }
@@ -283,6 +298,8 @@
       const out = team.players.filter(p => p.role !== 'GK' && !p.off);
       const nearest = list => list.reduce((a, c) => (dist(c, spot) < dist(a, spot) ? c : a));
       if (type === 'goalkick') return this._gk(team);
+      // pênalti e falta direta (v7): bate o melhor finalizador
+      if (type === 'penalty' || (type === 'freekick' && this._fkDist(team, spot))) return out.slice().sort((a, c) => c.skill.shot - a.skill.shot || a.idx - c.idx)[0];
       const pick = list => nearest(list.length ? list : out);
       if (type === 'kickoff') return pick(out.filter(p => p.role === 'FWD'));
       if (type === 'corner') return pick(out.filter(p => p.role !== 'DEF'));
@@ -292,11 +309,38 @@
 
     _give(p) {
       const b = this.ball;
+      if (this._passFrom) { if (this._passFrom === p.team) p.team.stats.passOk++; this._passFrom = null; }
+      const fromCross = this.rules >= 7 && !!b.cross && b.lastTeam === p.team; // bola aérea que chegou num companheiro
+      b.cross = false;
       b.owner = p; b.receiver = null; b.shot = null;
       b.lastTeam = p.team; b.lastPlayer = p;
       this.possTeam = p.team;
       p.hold = 0;
       p.nextDecision = p.role === 'GK' ? rand(1.4, 2.4) : rand(0.4, 1.1);
+      if (this.rules >= 7) { // finaliza de primeira; o cruzamento de escanteio é marcado de novo pela cobrança (_updateDead)
+        p.cornerCross = false;
+        p.header = fromCross && p.role !== 'GK';
+        if (p.header) p.nextDecision = 0.05;
+      }
+    }
+
+    /** Distância até o gol atacado se `spot` é zona de falta direta (fora da área, perto e central o bastante); senão 0. */
+    _fkDist(team, spot) {
+      if (this.rules < 7) return 0;
+      const gx = team.dir > 0 ? L : 0, d = DM.hypot(gx - spot.x, W / 2 - spot.y);
+      return d < V7.fkRange && !this._inBox(team, spot) && Math.abs(spot.y - W / 2) < 20 && (gx - spot.x) * team.dir > 0 ? d : 0;
+    }
+
+    /** O ponto está dentro da grande área que o time ataca? */
+    _inBox(team, pt) {
+      const gx = team.dir > 0 ? L : 0;
+      return Math.abs(pt.x - gx) < 16.5 && Math.abs(pt.y - W / 2) < 20.16;
+    }
+
+    /** Há marcador colado (e em condição de dar o bote) em quem está com a bola? (toque rápido, v7) */
+    _pressed(o) {
+      for (const d of o.team.opp.players) if (!d.off && d.cooldown <= 0 && dist(d, o) < V7.pressDist) return true;
+      return false;
     }
 
     /** Substituições e mudanças de tática combinadas antes do jogo. Só acontecem com a bola parada; não usam números aleatórios. */
@@ -595,10 +639,13 @@
         for (const o of r.team.opp.players) o.cooldown = Math.max(o.cooldown, 1.0);
         r.taker.cooldown = 0;
         this._give(r.taker);
+        if (r.type === 'penalty') { this.restart = null; this.state = 'live'; this._shoot(r.taker, 11, 'pen'); return; }
         r.taker.nextDecision = rand(0.4, 0.9);
-        if (r.type === 'corner') r.taker.nextDecision = rand(0.9, 1.4);
+        if (r.type === 'corner') { r.taker.nextDecision = rand(0.9, 1.4); if (this.rules >= 7) r.taker.cornerCross = true; }
         this.restart = null;
         this.state = 'live';
+        const fd = r.type === 'freekick' ? this._fkDist(r.team, r.spot) : 0;
+        if (fd && rng() < V7.fkShoot) this._shoot(r.taker, fd, 'fk'); // falta direta: bate para o gol
       }
       b.x = r.spot.x; b.y = r.spot.y;
     }
@@ -611,7 +658,7 @@
         o.hold += dt;
         if (this._tackles(o, dt)) return;
         if (o.team.human && o === o.team.ctrl) { if (o.team.act && o.cooldown <= 0 && this._humanAct(o)) return; }
-        else if (o.hold >= o.nextDecision) this._decide(o);
+        else if (o.hold >= o.nextDecision || (this.rules >= 7 && o.hold > V7.pressHold && this._pressed(o))) this._decide(o);
       } else {
         this._loose(dt);
       }
@@ -628,7 +675,8 @@
         if (rng() > rate * dt) continue;
         const r = rng();
         const b = this.ball;
-        if (r < 0.09) {
+        const v7 = this.rules >= 7, fr = v7 ? V7.foul : 0.09, sr = v7 ? fr + 0.53 : 0.62; // falta / desarme limpo / bola espirrada
+        if (r < fr) {
           d.team.stats.fouls++;
           if (this.rules >= 6) {
             this._emit({ type: 'foul', team: d.team.key, player: d, text: 'Falta de ' + d.short });
@@ -648,9 +696,12 @@
             }
           }
           const spot = { x: clamp(o.x, 1, L - 1), y: clamp(o.y, 1, W - 1) };
-          this._setRestart('freekick', o.team, spot);
+          if (this.rules >= 7 && this._inBox(o.team, spot)) { // falta na área que o time de quem sofreu ataca: pênalti
+            this._setRestart('penalty', o.team, { x: (o.team.dir > 0 ? L : 0) - o.team.dir * 11, y: W / 2 });
+            this._emit({ type: 'penalty', team: o.team.key, player: this.restart.taker, fouled: o, by: d, text: 'Pênalti para o ' + o.team.name });
+          } else this._setRestart('freekick', o.team, spot);
           this._hurt(o, INJURY.fouled);
-        } else if (r < 0.62) {
+        } else if (r < sr) {
           o.cooldown = 0.7;
           this._emit({ type: 'steal', team: d.team.key, player: d, from: o, text: '' });
           this._give(d);
@@ -661,7 +712,7 @@
           b.lastTeam = d.team; b.lastPlayer = d; // último toque é de quem desarmou (se a bola entrar, o gol é dele)
           o.cooldown = 0.4; d.cooldown = 0.25;
         }
-        if (r >= 0.09) this._hurt(o, 1);
+        if (r >= fr) this._hurt(o, 1);
         return true;
       }
       return false;
@@ -679,8 +730,13 @@
       if (b.shot) {
         const s = b.shot;
         if (s.blockAt != null && s.traveled >= s.blockAt) {
-          const a = rand(0, Math.PI * 2), v = rand(5, 10);
-          b.vx = DM.cos(a) * v; b.vy = DM.sin(a) * v;
+          if (this.rules >= 7 && rng() < V7.blockCorner) { // desvio para a linha de fundo, por fora da trave: escanteio
+            const side = b.y < W / 2 ? -1 : 1, ty = W / 2 + side * rand(9, 22), a = DM.atan2(ty - b.y, s.gx - b.x), v = rand(8, 11);
+            b.vx = DM.cos(a) * v; b.vy = DM.sin(a) * v;
+          } else {
+            const a = rand(0, Math.PI * 2), v = rand(5, 10);
+            b.vx = DM.cos(a) * v; b.vy = DM.sin(a) * v;
+          }
           b.lastTeam = s.team.opp; b.shot = null; b.receiver = null;
           return;
         }
@@ -802,6 +858,23 @@
 
       if (p.role === 'GK') { this._pass(p, true); return; }
 
+      if (p.cornerCross) { // escanteio (v7): cruza para o companheiro mais livre dentro da área
+        p.cornerCross = false;
+        let tgt = null, ts = -1e9;
+        for (const q of t.players) {
+          if (q === p || q.off || q.role === 'GK' || DM.hypot(gx - q.x, W / 2 - q.y) > 16) continue;
+          let open = 6;
+          for (const o of t.opp.players) open = Math.min(open, dist(q, o));
+          const s = open + rand(0, 2);
+          if (s > ts) { ts = s; tgt = q; }
+        }
+        if (tgt) { this._kickPass(p, tgt, 'cross'); return; }
+      }
+      if (p.header) { // recebeu o cruzamento: cabeceia/bate de primeira
+        p.header = false;
+        if (dg < V7.headerRange && (gx - p.x) * dir > 0) { this._shoot(p, dg, 'head'); return; }
+      }
+
       if (dg < 34 && (gx - p.x) * dir > 0) {
         // perto do gol o jogador decide mais rápido e tenta finalizar com mais frequência
         if (dg < 26) p.nextDecision = rand(0.35, 0.9);
@@ -832,53 +905,96 @@
         if (dir > 0 ? q.x > 70 : q.x < 35) s += 0.6;
         if (s > bs) { bs = s; best = q; }
       }
+      const thr = this.rules >= 7 && !force ? this._throughBall(p) : null;
+      if (thr && thr.s > bs) { this._kickPass(p, thr.q, 'through', thr.spot); return true; }
       if (!best || (bs < 0 && !force)) return false;
       this._kickPass(p, best);
       return true;
     }
 
-    _kickPass(p, q) {
-      const b = this.ball;
+    /**
+     * Lançamento em profundidade (v7): bola no espaço à frente de um atacante/meia que chega antes do marcador.
+     * Devolve { q, spot, s } com a nota na mesma escala do passe comum, ou null.
+     */
+    _throughBall(p) {
+      const t = p.team, dir = t.dir, opp = t.opp.players;
+      let best = null;
+      for (const q of t.players) {
+        if (q === p || q.off || (q.role !== 'FWD' && q.role !== 'MID')) continue;
+        const fwd = (q.x - p.x) * dir;
+        if (fwd < 6) continue;
+        const spot = { x: clamp(q.x + dir * rand(7, 11), 4, L - 4), y: clamp(q.y + (W / 2 - q.y) * 0.15, 3, W - 3) };
+        if ((spot.x - q.x) * dir < 3) continue; // sem espaço até a linha de fundo
+        const d = dist(p, spot);
+        if (d < 12 || d > 40) continue;
+        const dq = dist(q, spot);
+        let dOpp = 99, lane = 6;
+        for (const o of opp) {
+          if (o.off) continue;
+          dOpp = Math.min(dOpp, dist(o, spot));
+          lane = Math.min(lane, segDist(o, p, spot));
+        }
+        if (dOpp < dq + 1 || lane < 1.6) continue; // o marcador chega antes ou o caminho está fechado
+        const s = 0.1 * fwd * t.tac.fwd + 0.3 * Math.min(dOpp - dq, 8) + 0.5 * lane - 0.045 * d + rand(0, 1.6) + ((dir > 0 ? spot.x > 70 : spot.x < 35) ? 0.8 : 0);
+        if (!best || s > best.s) best = { q, spot, s };
+      }
+      return best;
+    }
+
+    /** Passe de p para q. kind força o tipo ('cross', 'through'); spot = ponto do campo (lançamento no espaço) em vez do pé de q. */
+    _kickPass(p, q, kind, spot) {
+      const b = this.ball, v7 = this.rules >= 7;
       const lead = Math.min(dist(p, q) / 16, 1.2);
-      const tx = clamp(q.x + q.vx * lead, 1, L - 1);
-      const ty = clamp(q.y + q.vy * lead, 1, W - 1);
+      const tx = spot ? spot.x : clamp(q.x + q.vx * lead, 1, L - 1);
+      const ty = spot ? spot.y : clamp(q.y + q.vy * lead, 1, W - 1);
       const dd = DM.hypot(tx - p.x, ty - p.y);
       const v = clamp(Math.sqrt(64 + 6 * dd), 11, 27);
-      const ang = DM.atan2(ty - p.y, tx - p.x) + (rng() - 0.5) * 0.1 * (1 + dd / 35) / p.skill.pass;
+      const ang = (v7 ? DM.atan2(ty - b.y, tx - b.x) : DM.atan2(ty - p.y, tx - p.x)) + (rng() - 0.5) * 0.1 * (1 + dd / 35) / p.skill.pass;
       b.vx = DM.cos(ang) * v; b.vy = DM.sin(ang) * v;
       b.owner = null; b.receiver = q; b.lastTeam = p.team; b.lastPlayer = p;
       p.cooldown = 0.45;
       p.team.stats.passes++;
+      this._passFrom = p.team;
       const dir = p.team.dir, gx = dir > 0 ? L : 0, fwd = (q.x - p.x) * dir;
-      let kind = 'pass';
-      if (Math.abs(p.y - W / 2) > 20 && Math.abs(gx - q.x) < 20 && Math.abs(q.y - W / 2) < 15 && fwd > 3) kind = 'cross';
-      else if (dd > 30 && (fwd > 10 || p.role === 'GK')) kind = 'long';
-      else if (fwd < -8) kind = 'back';
+      if (!kind) {
+        kind = 'pass';
+        if (Math.abs(p.y - W / 2) > 20 && Math.abs(gx - q.x) < 20 && Math.abs(q.y - W / 2) < 15 && fwd > 3) kind = 'cross';
+        else if (dd > 30 && (fwd > 10 || p.role === 'GK')) kind = 'long';
+        else if (fwd < -8) kind = 'back';
+      }
+      if (v7) b.cross = kind === 'cross';
       this._emit({ type: 'pass', team: p.team.key, player: p, to: q, kind, text: '' });
     }
 
-    _shoot(p, dg) {
-      const t = p.team, dir = t.dir, b = this.ball;
+    /** Finalização. kind (v7): 'pen' pênalti, 'fk' falta direta, 'head' de primeira após cruzamento; vazio = chute comum. */
+    _shoot(p, dg, kind) {
+      const t = p.team, dir = t.dir, b = this.ball, v7 = this.rules >= 7;
       const gx = dir > 0 ? L : 0;
       const gks = this._gk(t.opp).skill.def;
-      const xg = clamp(0.19 * DM.exp(-(dg - 6) / 8), 0.015, 0.3) * p.skill.shot / gks;
-      const sv = 0.27 * Math.min(1.3, gks);
+      let xg, sv, bl = 0.22;
+      if (kind === 'pen') { xg = clamp(0.76 + (p.skill.shot - 1) * 0.12 - (gks - 1) * 0.08, 0.6, 0.9); sv = (1 - xg) * 0.6; bl = 0; }
+      else if (kind === 'fk') { xg = Math.min(0.3, clamp(0.1 * DM.exp(-(dg - 18) / 10), 0.02, 0.12) * p.skill.shot / gks); sv = 0.3; bl = 0.25; } // bl = barreira
+      else if (v7) { xg = Math.min(V7.xgMax, clamp(V7.xg * DM.exp(-(dg - 6) / 8), 0.015, V7.xgCap) * p.skill.shot / gks); sv = 0.27 * Math.min(1.3, gks); }
+      else { xg = clamp(0.19 * DM.exp(-(dg - 6) / 8), 0.015, 0.3) * p.skill.shot / gks; sv = 0.27 * Math.min(1.3, gks); }
       const r = rng();
       let outcome, aimY;
       if (r < xg) { outcome = 'goal'; aimY = W / 2 + (rng() < 0.5 ? -1 : 1) * rand(1.5, 3.4); }
       else if (r < xg + sv) { outcome = 'save'; aimY = W / 2 + rand(-3.4, 3.4); }
-      else if (r < xg + sv + 0.22) { outcome = 'block'; aimY = W / 2 + rand(-3.4, 3.4); }
+      else if (r < xg + sv + bl) { outcome = 'block'; aimY = W / 2 + rand(-3.4, 3.4); }
       else { outcome = 'miss'; aimY = W / 2 + (rng() < 0.5 ? -1 : 1) * rand(4.5, 8); }
 
-      const ang = DM.atan2(aimY - p.y, gx - p.x);
+      const ang = v7 ? DM.atan2(aimY - b.y, gx - b.x) : DM.atan2(aimY - p.y, gx - p.x); // v7: mira a partir da bola
       const v = rand(22, 30);
       b.vx = DM.cos(ang) * v; b.vy = DM.sin(ang) * v;
       b.owner = null; b.receiver = null; b.lastTeam = t; b.lastPlayer = p;
       p.cooldown = 0.6;
-      b.shot = { team: t, shooter: p, outcome, aimY, gx, dir, traveled: 0, blockAt: outcome === 'block' ? dg * rand(0.25, 0.6) : null };
+      b.shot = { team: t, shooter: p, outcome, aimY, gx, dir, traveled: 0, kind: kind || null,
+        blockAt: outcome === 'block' ? (kind === 'fk' ? V7.wall : dg * rand(0.25, 0.6)) : null }; // falta: a barreira fica a 9,15 m
       t.stats.shots++;
       if (outcome === 'goal' || outcome === 'save') t.stats.onTarget++;
-      this._emit({ type: 'shot', team: t.key, player: p, text: 'Chute de ' + p.short, outcome });
+      const ev = { type: 'shot', team: t.key, player: p, text: 'Chute de ' + p.short, outcome };
+      if (kind) ev.kind = kind;
+      this._emit(ev);
     }
 
     /* ---------- movimento ---------- */
@@ -981,6 +1097,7 @@
         return { x: ownX + dir * 1.5, y: sy, u: 1.7 };
       }
       if (this.state === 'dead' && this.restart && p === this.restart.taker) return { x: this.restart.spot.x, y: this.restart.spot.y, u: 1 };
+      if (this.state === 'dead' && this.restart && this.restart.type === 'penalty' && this.restart.team !== t) return { x: ownX + dir * 0.4, y: W / 2, u: 1 }; // na linha
       const adv = Math.abs(b.x - ownX) * 0.05;
       return { x: ownX + dir * (3 + adv), y: clamp(W / 2 + (b.y - W / 2) * 0.2, W / 2 - 5, W / 2 + 5), u: 0.9 };
     }
@@ -988,6 +1105,20 @@
     _setPieceTarget(p, r) {
       const t = p.team, n = p.idx;
       if (r.type === 'kickoff') { const h = this._homePos(p, true); return { x: h.x, y: h.y, u: 1.4 }; }
+      if (r.type === 'penalty') { // todos fora da área, atrás da linha da bola
+        const gx = r.team.dir > 0 ? L : 0, h = this._formationTarget(p);
+        if (Math.abs(h.x - gx) < 19) h.x = gx - r.team.dir * (19 + (n % 3) * 1.5);
+        return h;
+      }
+      if (r.type === 'freekick' && this._fkDist(r.team, r.spot) && t !== r.team && p.role !== 'GK') { // barreira de 3
+        if (!r.wall) r.wall = t.players.filter(q => q.role !== 'GK' && !q.off).sort((a, c) => dist(a, r.spot) - dist(c, r.spot) || a.idx - c.idx).slice(0, 3);
+        const i = r.wall.indexOf(p);
+        if (i >= 0) {
+          const gx = r.team.dir > 0 ? L : 0, dx = gx - r.spot.x, dy = W / 2 - r.spot.y, m = DM.hypot(dx, dy) || 1;
+          const cx = r.spot.x + dx / m * V7.wall, cy = r.spot.y + dy / m * V7.wall;
+          return { x: cx - dy / m * (i - 1) * 0.9, y: cy + dx / m * (i - 1) * 0.9, u: 1.2 };
+        }
+      }
       if (r.type === 'corner') {
         if (t === r.team) {
           const central = p.fy > 0.3 && p.fy < 0.7;
@@ -1050,6 +1181,6 @@
     }
   }
 
-  g.FootballEngine = { VERSION: 6, TACTICS: TACTIC_NAMES, Match, Player, PITCH: { L, W, GOAL_W, GY0, GY1 } };
+  g.FootballEngine = { VERSION: 7, TACTICS: TACTIC_NAMES, Match, Player, PITCH: { L, W, GOAL_W, GY0, GY1 } };
   if (typeof module !== 'undefined') module.exports = g.FootballEngine;
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -3,7 +3,7 @@
  * - Centro de Treinamento (ct): o treino rende +10% por nível acima do 1; a partir do nível 4, 3 sessões por dia.
  * - Departamento médico (med): condição volta +1% por hora por nível (em descanso, o dobro), lesões duram 10% menos por nível
  *   e a fisioterapia fica 10% mais barata por nível.
- * - Estádio (stadium): bilheteria em cada partida oficial jogada em casa.
+ * - Estádio (stadium): bilheteria e torcida em cada partida oficial jogada em casa (a torcida soma CROWD nas habilidades do mandante).
  * Os efeitos viram um objeto `mods` que o treino e a condição física usam (training.js).
  */
 const TR = require('./training');
@@ -11,11 +11,12 @@ const TR = require('./training');
 const MAX_LEVEL = 5;
 const COST = [0, 15e6, 30e6, 60e6, 100e6];       // COST[nível atual] = preço para subir ao próximo
 const TICKETS = [0, 0, 2e6, 4e6, 6e6, 9e6];        // bilheteria por jogo oficial em casa, por nível
+const CROWD = [0, 0.03, 0.05, 0.07, 0.09, 0.12];    // torcida: fração a mais nas habilidades do mandante, por nível (motor v7)
 
 const FACILITIES = {
   ct: { name: 'Centro de Treinamento', icon: '🏋️', about: 'Treino rende mais e, a partir do nível 4, cada jogador treina 3 vezes por dia.' },
   med: { name: 'Departamento médico', icon: '🩺', about: 'Condição física volta mais rápido, lesões duram menos e a fisioterapia fica mais barata.' },
-  stadium: { name: 'Estádio', icon: '🏟️', about: 'Bilheteria em cada partida oficial jogada em casa (quem desafia é o mandante).' }
+  stadium: { name: 'Estádio', icon: '🏟️', about: 'Bilheteria e torcida em cada partida oficial jogada em casa: a torcida deixa o time mais forte (quem desafia é o mandante).' }
 };
 
 const levelOf = (fac, key) => Math.max(1, Math.min(MAX_LEVEL, (fac && fac[key]) || 1));
@@ -35,6 +36,7 @@ function mods(fac) {
 }
 
 const tickets = fac => TICKETS[levelOf(fac, 'stadium')];
+const crowd = fac => CROWD[levelOf(fac, 'stadium')];
 const upgradeCost = (fac, key) => (levelOf(fac, key) >= MAX_LEVEL ? null : COST[levelOf(fac, key)]);
 
 /** Texto do efeito de uma instalação num nível (para a tela). */
@@ -44,8 +46,8 @@ function effect(key, level) {
   const pct = v => Math.round(Math.abs(v) * 100) + '%';
   if (key === 'ct') return (m.gain > 1 ? 'Treino rende +' + pct(m.gain - 1) : 'Treino sem bônus') + ' · ' + m.sessions + ' sessões por dia';
   if (key === 'med') return 'Recupera ' + m.recovery + '% por hora (' + m.rest + '% em descanso)' + (m.injury < 1 ? ' · lesões ' + pct(1 - m.injury) + ' mais curtas · fisioterapia ' + pct(1 - m.physio) + ' mais barata' : '');
-  const t = TICKETS[level];
-  return t ? 'Bilheteria de € ' + t / 1e6 + ' M por jogo oficial em casa' : 'Sem bilheteria';
+  const t = TICKETS[level], c = 'torcida +' + (CROWD[level] * 100).toLocaleString('pt-BR') + '% nas habilidades do time em casa';
+  return (t ? 'Bilheteria de € ' + t / 1e6 + ' M por jogo oficial em casa' : 'Sem bilheteria') + ' · ' + c;
 }
 
 /** Regras para a tela: instalações, efeito de cada nível e preços. */
@@ -54,4 +56,4 @@ const meta = () => ({
   list: Object.keys(FACILITIES).map(key => Object.assign({ key }, FACILITIES[key], { effects: [1, 2, 3, 4, 5].map(l => effect(key, l)) }))
 });
 
-module.exports = { FACILITIES, MAX_LEVEL, COST, TICKETS, levelOf, mods, tickets, upgradeCost, effect, meta, BASE: mods({}) };
+module.exports = { FACILITIES, MAX_LEVEL, COST, TICKETS, CROWD, levelOf, mods, tickets, crowd, upgradeCost, effect, meta, BASE: mods({}) };

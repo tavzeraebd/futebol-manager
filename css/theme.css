@@ -384,6 +384,15 @@ label { color: #475467; font-weight: 500; }
 .viewer input::placeholder { color: rgba(255, 255, 255, .4); }
 .viewer .msg.mine { color: var(--g-300); }
 .viewer .react-bar button:hover, .viewer .taunt-bar button:hover { background: rgba(255, 255, 255, .08); }
+.vstats { display: grid; gap: 7px; font-size: 13px; }
+.vs-row { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 8px; }
+.vs-row span { color: var(--muted); font-size: 12px; text-align: center; }
+.vs-row b { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.vs-row b:first-child { text-align: left; }
+.vs-row b:last-child { text-align: right; }
+.vs-row small { color: var(--muted); font-weight: 500; font-size: 11px; }
+.vs-bar { height: 6px; margin: -2px 0 3px; border-radius: 3px; background: rgba(255, 255, 255, .18); overflow: hidden; }
+.vs-bar i { display: block; height: 100%; border-radius: 3px; background: var(--g-500); transition: width .3s; }
 .pitch-wrap { border-radius: 12px; }
 .banner { background: rgba(3, 12, 7, .5); font-family: var(--font-num); letter-spacing: .04em; }
 .banner small { font-family: var(--font); letter-spacing: 0; }

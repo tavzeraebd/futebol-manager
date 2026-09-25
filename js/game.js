@@ -1236,6 +1236,7 @@
       else if (line.type === 'save') sfx.swell(0.12, 1500);
       else if (line.type === 'shot') sfx.swell(0.06, 900);
       else if (line.type === 'kickoff' || line.type === 'halftime' || line.type === 'fulltime') sfx.whistle(line.type !== 'kickoff');
+      else if (line.type === 'penalty') sfx.whistle(false);
       const spd = pb ? pb.speed : speed, pr = line.prio || (line.big ? 3 : 0);
       if ($('vVoice').checked && line.voice && (pr >= 3 || (pr >= 2 && spd <= 4) || (pr >= 1 && spd <= 2))) speak(line.vtext || line.text, pr);
     });
@@ -1294,13 +1295,7 @@
     rec = m;
     oldEngine = (m.engine || 0) !== FootballEngine.VERSION;
     match = new FootballEngine.Match(m.homeDef, m.awayDef, { seed: m.seed, knockout: !!m.knockout });
-    match.on(ev => {
-      if (ev.type !== 'goal') return;
-      $('banner').innerHTML = 'GOL!<small>' + esc(ev.player ? ev.player.name : '') + '</small>';
-      $('banner').hidden = false;
-      countdownOn = false;
-      bannerUntil = performance.now() + 2500;
-    });
+    match.on(bigMoment);
     paused = false; speed = 1; acc = 0; steps = 0; countdownOn = false; pb = null;
     $('vFeed').innerHTML = ''; $('vChat').innerHTML = ''; $('vFloat').innerHTML = '';
     startNarration();
@@ -1333,12 +1328,42 @@
     raf = requestAnimationFrame(tick);
   }
 
+  /** Faixa sobre o campo nos lances grandes: gol e pênalti marcado. */
+  function bigMoment(ev) {
+    if (ev.type !== 'goal' && ev.type !== 'penalty') return;
+    const who = ev.player ? ev.player.name : '';
+    $('banner').innerHTML = (ev.type === 'goal' ? 'GOL!' : 'PÊNALTI!') + '<small>' + esc(ev.type === 'goal' ? who : who + ' vai cobrar') + '</small>';
+    $('banner').hidden = false; countdownOn = false;
+    bannerUntil = performance.now() + (ev.type === 'goal' ? 2500 : 2000);
+  }
+
+  /** Estatísticas ao vivo da partida (atualiza no máximo 4 vezes por segundo). */
+  let statsAt = 0;
+  function renderVStats(force) {
+    const now = performance.now();
+    if (!force && now - statsAt < 250) return;
+    statsAt = now;
+    const h = match.home.stats, a = match.away.stats, tp = h.poss + a.poss;
+    const ph = tp ? Math.round(h.poss / tp * 100) : 50;
+    const tries = t => t.stats.passes - (match._passFrom === t ? 1 : 0); // o passe ainda em voo não conta
+    const pct = t => (tries(t) ? Math.round(t.stats.passOk / tries(t) * 100) + '%' : '—') + ' <small>' + t.stats.passOk + '/' + tries(t) + '</small>';
+    const row = (label, x, y) => '<div class="vs-row"><b>' + x + '</b><span>' + label + '</span><b>' + y + '</b></div>';
+    $('vStats').innerHTML =
+      '<div class="vs-row"><b>' + ph + '%</b><span>Posse de bola</span><b>' + (100 - ph) + '%</b></div><div class="vs-bar"><i style="width:' + ph + '%"></i></div>' +
+      row('Finalizações (no gol)', h.shots + ' (' + h.onTarget + ')', a.shots + ' (' + a.onTarget + ')') +
+      row('Passes certos', pct(match.home), pct(match.away)) +
+      row('Escanteios', h.corners, a.corners) +
+      row('Faltas', h.fouls, a.fouls) +
+      row('Cartões', '🟨' + h.yellow + (h.red ? ' 🟥' + h.red : ''), '🟨' + a.yellow + (a.red ? ' 🟥' + a.red : ''));
+  }
+
   function penLine() {
     const pn = match.pens;
     const mark = t => pn.kicks.filter(k => k.team === t).map(k => (k.scored ? '⚽' : '❌')).join(' ');
     return 'Pênaltis ' + pn.score[0] + ' – ' + pn.score[1] + '<small>' + esc(match.home.short) + ' ' + mark('home') + '<br>' + esc(match.away.short) + ' ' + mark('away') + '</small>';
   }
   function hud() {
+    renderVStats(match.finished);
     $('vScoreH').textContent = match.home.score;
     $('vScoreA').textContent = match.away.score;
     const extra = match.half >= 3 ? ' · Prorrogação' : '';
@@ -1629,11 +1654,7 @@
     if (two) match.setHuman('away', true);
     play = { two };
     held.clear();
-    match.on(ev => {
-      if (ev.type !== 'goal') return;
-      $('banner').innerHTML = 'GOL!<small>' + esc(ev.player ? ev.player.name : '') + '</small>';
-      $('banner').hidden = false; countdownOn = false; bannerUntil = performance.now() + 2500;
-    });
+    match.on(bigMoment);
     paused = false; speed = 1; acc = 0; steps = 0; countdownOn = false; pb = null;
     $('vFeed').innerHTML = ''; $('vChat').innerHTML = ''; $('vFloat').innerHTML = '';
     startNarration();

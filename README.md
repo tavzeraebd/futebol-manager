@@ -134,7 +134,25 @@ e está na tabela `player_training`.
   automática já deixa de fora). A **fisioterapia** num lesionado também tira um dia da lesão. O aviso do fim do jogo lista quem ficou de fora, quem se
   machucou e quem foi suspenso. A ficha do clube tem a coluna de vermelhos (CV).
 - Estado na tabela `player_training` (`inj_until`, `inj_kind`, `susp`, `yellows`); vermelhos em `player_stats.reds`. Partidas antigas continuam idênticas
-  ao rever: as regras novas só ligam em partidas com a versão 6 das regras (`v` na definição do time). Motor: versão 6.
+  ao rever: as regras novas só ligam em partidas com a versão 6 das regras (`v` na definição do time).
+
+## Regras da partida (motor versão 7)
+Mudanças para ter mais gols, jogadas mais trabalhadas e fazer a qualidade do elenco pesar mais. Só valem em partidas com `v: 7` nas duas definições de
+time; as partidas antigas (v6) são reproduzidas exatamente como antes (conferido lance a lance em 40 partidas).
+- **Mira a partir da bola:** chute e passe saem da bola, não do corpo do jogador. Antes, chute sorteado "para fora" às vezes entrava (19% dos gols).
+- **Pênalti:** falta sofrida dentro da área que o time ataca vira pênalti (goleiro na linha, todos fora da área), cobrado pelo melhor finalizador
+  (~76% de conversão, mais com bom batedor, menos com bom goleiro). Narração, apito e faixa "PÊNALTI!" no campo.
+- **Falta direta:** falta a até 30 m do gol, fora da área e central: o melhor finalizador bate direto em 60% das vezes, com barreira de 3 a 9,15 m.
+- **Bola aérea:** chute travado sai mais para escanteio (55%); o escanteio vira cruzamento para o companheiro mais livre na área, que finaliza de primeira
+  (cabeçada); cruzamentos de jogo corrido também são finalizados de primeira.
+- **Toque rápido:** com um marcador colado (2,2 m), o jogador solta a bola antes do desarme em vez de esperar o tempo de decisão.
+- **Lançamento em profundidade:** bola no espaço à frente do atacante/meia quando ele chega antes do marcador ("enfia a bola").
+- **Craques pesam mais:** as habilidades ficam 2,5 vezes mais longe da média e a velocidade 3 vezes (`SPREAD` em `server/rules.js`).
+- **Torcida:** em partida oficial o mandante soma de 3% a 12% nas habilidades, conforme o nível do estádio (`CROWD` em `server/facilities.js`).
+- **Mais faltas:** 20% das disputas de bola viram falta (antes 9%), o que dá pênaltis e faltas perto da área com frequência parecida com a do futebol real.
+- **Chance de gol calibrada** (`V7` em `js/engine.js`): curva de xG 0,26 (teto 0,36).
+- **Estatísticas ao vivo** na tela da partida: posse, finalizações, passes certos (%), escanteios, faltas e cartões.
+- Resultado nas simulações (300 partidas, catálogo base): ver a tabela no commit que introduziu a versão 7.
 
 ## Estrutura do clube (aba "Estrutura")
 Três instalações compradas com o saldo, do nível 1 ao 5. Subir de nível custa € 15 M, 30 M, 60 M e 100 M (€ 205 M para levar uma instalação ao máximo).
@@ -142,8 +160,8 @@ Todo clube começa no nível 1, que equivale às regras de antes.
 - **Centro de Treinamento:** o treino rende +10% por nível acima do 1 (até +40%); a partir do nível 4, cada jogador treina **3 vezes por dia**.
 - **Departamento médico:** a condição física volta +1% por hora por nível (nível 5: 8% por hora, 16% em descanso); lesões duram 10% menos por nível
   e a fisioterapia fica 10% mais barata por nível (até 40%).
-- **Estádio:** bilheteria em cada partida oficial jogada em casa (quem desafia é o mandante): € 2 M, 4 M, 6 M e 9 M nos níveis 2 a 5. Jogo contra a CPU não
-  rende bilheteria.
+- **Estádio:** bilheteria e torcida em cada partida oficial jogada em casa (quem desafia é o mandante): € 2 M, 4 M, 6 M e 9 M nos níveis 2 a 5, e a torcida
+  soma +3%, 5%, 7%, 9% e 12% nas habilidades do time nos níveis 1 a 5. Jogo contra a CPU não rende bilheteria nem tem torcida.
 - A recuperação segue o departamento médico do clube dono do jogador: ao melhorar o médico ou ao trocar de clube (compra, venda, leilão, troca) a condição
   é "congelada" no ritmo antigo, então ninguém recupera retroativamente. A ficha do clube mostra o nível de cada instalação.
 - Fica na coluna `clubs.facilities` (jsonb); o reset de temporada volta tudo ao nível 1.
