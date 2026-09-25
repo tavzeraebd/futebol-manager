@@ -13,7 +13,7 @@ Para testar com 2 jogadores, abra a URL em duas abas anônimas ou em dois navega
 - Em partidas entre dois jogadores, pausa/velocidade/pular valem para os dois ao mesmo tempo (o servidor guarda o relógio da partida). Contra a CPU e ao rever partidas antigas, os controles são só seus.
 - Nota do jogador -> habilidades no motor; a nota do técnico dá um bônus ao time inteiro.
 
-## Ligas e copas entre amigos (aba "Ligas")
+## Ligas e copas entre amigos (aba "Ligas e copas")
 - Crie uma sala (Liga de pontos corridos, turno único ou ida e volta, até 12 clubes; ou Copa mata-mata, até 16) e passe o
   código de 6 letras para os amigos entrarem. Só o dono inicia. Depois de iniciada, ninguém entra.
 - Jogos: "Chamar para jogar" desafia o adversário (ele precisa estar online; os dois assistem juntos, com controles
@@ -33,7 +33,7 @@ Para testar com 2 jogadores, abra a URL em duas abas anônimas ou em dois navega
   Se o servidor for atualizado com a página aberta, a aba recarrega sozinha ao abrir uma partida.
 - Navegadores só liberam áudio depois de um clique na página; se ficar mudo, clique em qualquer lugar.
 
-## Leilão ao vivo e trocas (aba "Leilão e trocas")
+## Leilão ao vivo e trocas (aba "Leilões e trocas")
 - Só vai a leilão jogador (ou técnico) que já é do seu clube: o dono leiloa o dele (botão "Leiloar" no Elenco). Quem está no mercado, sem
   clube, não pode ser leiloado por ninguém: contrata-se direto (o servidor recusa). 45 s de relógio; lance nos últimos 10 s estende o tempo. Lance mínimo sobe 5% (mín. €1M).
   O vencedor paga o valor cheio ao vendedor (sem o desconto de 25% da venda ao banco). Máx. 2 leilões abertos por clube.
@@ -41,11 +41,11 @@ Para testar com 2 jogadores, abra a URL em duas abas anônimas ou em dois navega
 - Trocas: escolha o clube, marque quem você dá e quem recebe (até 5 de cada lado) e, se quiser, dinheiro. O outro aceita ou recusa;
   a troca é conferida de novo ao aceitar (dono, saldo, elenco máx. 25, um técnico por clube). Itens em leilão/troca ficam travados.
 
-## Tática e substituições (aba "Escalação")
+## Tática e substituições (aba "Escalação e tática")
 - Estilos: Equilibrado, Ofensivo, Retranca, Contra-ataque e Pressão alta. Além disso, planeje até 5 trocas e 3 mudanças de tática
   em minutos combinados; elas acontecem na primeira bola parada depois do minuto (ou no intervalo) e são narradas.
 
-## Jogar você mesmo (aba "Clubes")
+## Jogar você mesmo (aba "Jogar")
 - "Jogar (eu controlo)": contra a CPU ou contra o time de um amigo; você controla o jogador mais próximo da bola.
   W A S D ou setas mover, Q/Espaço passe (para quem está na direção que você aponta), E chute, Shift correr. No celular aparecem botões na tela.
 - "2 jogadores no mesmo teclado": P1 com W A S D + Q + E + Shift; P2 com setas + K + L + Shift direito.
@@ -54,10 +54,13 @@ Para testar com 2 jogadores, abra a URL em duas abas anônimas ou em dois navega
 ## Celular (Android e iOS)
 O jogo funciona no navegador do celular e pode ser instalado como app (PWA): no **iPhone/iPad** abra no Safari > Compartilhar > "Adicionar à Tela de Início";
 no **Android** use o menu do Chrome > "Instalar app" (ou "Adicionar à tela inicial").
-- Layout: até 900 px (e com o celular deitado) o cabeçalho vira uma barra compacta (escudo, clube, saldo e menu ☰ com conta/senha/sair) com as abas
-  rolando de lado; Mercado, Elenco e Partidas viram cartões com o botão de contratar à vista (2 colunas no tablet). Respeita o notch e a barra de gestos
-  do iPhone (`viewport-fit=cover` + `env(safe-area-inset-*)`); campos com 16 px (o iOS não dá zoom ao digitar); alvos de toque de ~40 px.
-  Tudo isso está em `css/mobile.css`; telas grandes com mouse continuam como sempre foram.
+- Layout (visual em `css/theme.css`, portal claro com verde de gramado): no computador, barra superior (escudo, busca no mercado, saldo, fonte de dados e
+  menu da conta no avatar) e barra lateral com ícones; entre 1024 e 1279 px a lateral vira um trilho compacto. Abaixo de 1024 px aparece a barra de
+  navegação inferior (Início · Escalação · ⚽ Jogar · Mercado · Menu) e o "Menu" abre a lista completa numa gaveta lateral; com o celular deitado a
+  barra inferior some e a gaveta abre pelo ☰ do topo. A aba Início resume o clube (estádio, classificação, saldo, campanha, condição, últimos jogos e
+  destaques). Até 900 px Mercado, Elenco e Partidas viram cartões com o botão de contratar à vista (2 colunas no tablet). Respeita o notch e a barra de
+  gestos do iPhone (`viewport-fit=cover` + `env(safe-area-inset-*)`); campos com 16 px (o iOS não dá zoom ao digitar); alvos de toque de ~40 px.
+  Os ajustes de toque e de telas pequenas estão em `css/mobile.css`.
 - Partida: em pé o campo ocupa a largura com uma dica para virar o aparelho; deitado o campo ocupa a altura da tela. No "jogar você mesmo" aparecem
   os botões na tela (cruzeta e CORRER/PASSE/CHUTE; deitado eles flutuam nas laterais). A tela fica acesa durante a partida (Wake Lock).
 - Som e voz: o navegador só libera áudio depois de um toque; o primeiro toque na página destrava os dois. **No iPhone o áudio pode ficar mudo com a
@@ -65,7 +68,7 @@ no **Android** use o menu do Chrome > "Instalar app" (ou "Adicionar à tela inic
 - Conexão: ao sair do app e voltar (ou trocar de rede) o jogo reabre a conexão em tempo real e atualiza a aba. Com o app em segundo plano você aparece
   como offline para os amigos (ninguém consegue te desafiar).
 - O login com Google pode falhar dentro do app instalado no iPhone (o iOS trata pop-ups de PWA de um jeito diferente do Safari; não testei em aparelho
-  real): por garantia, defina uma senha no menu ☰ e entre com o nome do clube e a senha.
+  real): por garantia, defina uma senha no menu da conta (avatar no topo) e entre com o nome do clube e a senha.
 
 ## Login com Google (clube persistente)
 Sem login, o clube fica preso ao navegador (se limpar os dados, perde o acesso). Com o Google, o clube fica ligado à sua conta.
@@ -76,7 +79,7 @@ Sem login, o clube fica preso ao navegador (se limpar os dados, perde o acesso).
    (e a URL pública, se hospedar o jogo; a porta precisa ser a mesma).
 4. Copie o ID do cliente e ponha em `config.local.json` (veja `config.example.json`) ou na variável `GOOGLE_CLIENT_ID`.
 5. Reinicie o servidor (`iniciar.bat`). A tela inicial passa a mostrar o botão "Fazer login com o Google".
-Clubes já criados sem login mostram o botão "Continuar com o Google" no topo para se vincularem.
+Clubes já criados sem login mostram o botão "Continuar com o Google" no menu da conta (avatar no topo) para se vincularem.
 O servidor valida a assinatura do token do Google (sem guardar senha); você pode entrar em vários dispositivos.
 
 ## Banco de dados (Supabase)
@@ -99,7 +102,7 @@ Depois de cada partida **entre jogadores** (a CPU é só teste), a nota de quem 
   A nota efetiva já entra na simulação das partidas seguintes. Clicando em qualquer jogador ou técnico aparece a ficha
   (características, nota, valor, forma). Cada clube recebe um aviso com quem subiu e quem caiu.
 
-## Centro de Treinamento e condição física (aba "Treino")
+## Centro de Treinamento e condição física (aba "Centro de Treino")
 Cada jogador tem **condição física** (0 a 100%) e pode **treinar** para melhorar as características. Tudo fica com o jogador (se ele for vendido, vai junto)
 e está na tabela `player_training`.
 - **Treino:** escolha o foco (Finalização, Passe, Drible, Defesa, Velocidade, Resistência ou "Automático", o que mais ajuda na posição) e a intensidade:

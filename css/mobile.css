@@ -6,7 +6,8 @@
  * - dvh no lugar de vh (a barra de endereço do Safari/Chrome muda a altura da tela).
  * - Campos de texto com 16 px em aparelhos de toque: abaixo disso o iOS dá zoom ao focar.
  * - Alvos de toque de ~40 px e touch-action: manipulation (sem espera de duplo toque).
- * - Até 900 px, ou celular deitado: cabeçalho compacto com menu e tabelas viram cartões (o botão de contratar fica à vista).
+ * - A navegação (gaveta lateral e barra inferior abaixo de 1024 px) fica em theme.css; --bottom-gap é o espaço que a barra inferior ocupa.
+ * - Até 900 px, ou celular deitado: tabelas viram cartões (o botão de contratar fica à vista).
  * - Até 720 px: o restante (escalação, leilão, fichas, partida) se reorganiza em uma coluna.
  */
 :root {
@@ -18,28 +19,26 @@
 html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; -webkit-tap-highlight-color: transparent; }
 body { padding-left: var(--sal); padding-right: var(--sar); }
 
-.m-title, .menu-btn, .only-m, .rotate-tip { display: none; }
+.rotate-tip { display: none; }
 
-button, .btn, .seg button, .tabs button, .subtabs button, a, label, select, summary, input[type=checkbox] { touch-action: manipulation; }
+button, .btn, .seg button, .subtabs button, a, label, select, summary, input[type=checkbox] { touch-action: manipulation; }
 button { -webkit-user-select: none; user-select: none; }
 #pitch, .pad, .pad button { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
 
 /* área segura e altura real da tela */
 .auth { min-height: 100vh; min-height: 100dvh; padding: max(16px, var(--sat)) 16px max(16px, var(--sab)); }
-.page { padding-bottom: calc(48px + var(--sab)); }
-.fm-nav { padding-top: var(--sat); }
 .viewer { overscroll-behavior: contain; padding: max(12px, var(--sat)) max(12px, var(--sar)) max(12px, var(--sab)) max(12px, var(--sal)); }
 .pmodal { padding: max(16px, var(--sat)) max(16px, var(--sar)) max(16px, var(--sab)) max(16px, var(--sal)); }
 .pbox { max-height: 92vh; max-height: 92dvh; overscroll-behavior: contain; }
 .dlg { max-height: calc(100vh - 32px); max-height: calc(100dvh - 32px); overflow: auto; }
-.toasts { right: max(12px, var(--sar)); bottom: max(12px, var(--sab)); }
+.toasts { right: max(12px, var(--sar)); bottom: calc(12px + var(--bottom-gap)); }
 .viewer, .pmodal { -webkit-backdrop-filter: blur(3px); }
 
 /* aparelhos de toque (celular e tablet) */
 @media (pointer: coarse) {
   .btn, .seg button { min-height: 40px; }
   .btn.sm { min-height: 36px; padding: 6px 12px; font-size: 13px; }
-  .tabs button, .subtabs button { min-height: 40px; }
+  .subtabs button { min-height: 40px; }
   input:not([type=checkbox]):not([type=radio]):not([type=color]), select { min-height: 42px; }
   input[type=checkbox] { width: 20px; height: 20px; }
   .chk { min-height: 32px; }
@@ -49,7 +48,9 @@ button { -webkit-user-select: none; user-select: none; }
   .pad-dirs { grid-template-columns: repeat(3, 60px); }
   .pad-acts button { min-width: 84px; }
   /* sem desfoque atrás do jogo: pesa em celular barato enquanto o campo anima */
-  .viewer, .pmodal { backdrop-filter: none; -webkit-backdrop-filter: none; background: rgba(4, 7, 15, .94); }
+  .viewer, .pmodal, .topbar, .btn.glass { backdrop-filter: none; -webkit-backdrop-filter: none; }
+  .viewer { background: rgba(3, 12, 7, .95); }
+  .pmodal { background: rgba(16, 24, 40, .7); }
   body { background-attachment: scroll; }
 }
 @media (hover: none) and (pointer: coarse) {
@@ -57,55 +58,10 @@ button { -webkit-user-select: none; user-select: none; }
   #plDuo { display: none; } /* dois jogadores no mesmo teclado: não existe no celular */
 }
 
-/* ---------- celular, tablet em pé e celular deitado: cabeçalho compacto, filtros, cartões ---------- */
+/* ---------- celular, tablet em pé e celular deitado: filtros e cartões ---------- */
 @media (max-width: 900px), (max-height: 500px) and (pointer: coarse) {
-  h2 { font-size: 17px; }
+  h2 { font-size: 16px; }
 
-  /* cabeçalho: [escudo] [clube] [saldo] [menu] e, embaixo, as abas rolando de lado */
-  .fm-nav {
-    display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; grid-template-areas: "crest title saldo menu" "tabs tabs tabs tabs";
-    align-items: center; column-gap: 10px; row-gap: 0; padding: var(--sat) 10px 0;
-  }
-  .nav-main, .nav-row, .nav-right { display: contents; }
-  .crest-frame { grid-area: crest; width: 40px; height: 40px; margin: 6px 0; background: none; }
-  .crest-frame .crest { width: 34px; height: 34px; font-size: 11px; border-width: 2px; box-shadow: none; }
-  .m-title { display: block; grid-area: title; min-width: 0; line-height: 1.15; }
-  .m-title b { display: block; font-size: 15px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .m-title small { display: block; font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .kpibox { grid-area: saldo; padding: 2px 10px; border-width: 1.5px; text-align: right; }
-  .kpibox b { font-size: 14px; }
-  .datebox, #btnLogout { display: none; }
-  .menu-btn { display: grid; grid-area: menu; place-items: center; width: 40px; height: 40px; min-height: 0; padding: 0; font-size: 20px; line-height: 1; border-radius: 10px; }
-  .tabs {
-    grid-area: tabs; gap: 2px; margin: 0 -10px; padding: 0 10px; overflow-x: auto; -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain;
-    border-top: 1px solid rgba(255, 255, 255, .06);
-  }
-  .tabs button { font-size: 14px; line-height: 20px; letter-spacing: -.02em; padding: 10px 12px; border-bottom: 2px solid transparent; }
-  .tabs button.on { border-bottom: 2px solid var(--fm-purple); }
-
-  /* menu da conta: abre por cima do conteúdo */
-  .subnav {
-    position: absolute; top: 100%; left: 0; right: 0; display: none; flex-direction: column; align-items: stretch; gap: 0;
-    padding: 4px max(14px, var(--sar)) 10px max(14px, var(--sal)); background: #12162b; border-bottom: 1px solid var(--fm-border);
-    box-shadow: 0 14px 30px rgba(0, 0, 0, .55); font-size: 14px;
-  }
-  .fm-nav.menu-open .subnav { display: flex; }
-  .subnav .sub { padding: 11px 2px; border-bottom: 1px solid var(--line); text-align: left; }
-  .subnav .sub:last-child { border-bottom: 0; }
-  #tbClub { display: none; }
-  .subnav .only-m { display: block; color: #ff8a9b; }
-  #linkGoogle { display: block; min-height: 0; }
-  #linkGoogle:empty { display: none; }
-
-  /* faixa do clube: só as estatísticas (o escudo e o nome já estão no cabeçalho) */
-  .hero { width: calc(100% - 24px); margin-top: 12px; padding: 10px; border-radius: 14px; }
-  .hero-crest, .hero-id { display: none; }
-  .hero-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; width: 100%; margin-left: 0; }
-  .hero-stats > div { min-width: 0; padding: 6px 8px; }
-  .hero-stats small { font-size: 10px; }
-  .hero-stats b { display: block; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
-  .page { padding: 12px 12px calc(32px + var(--sab)); }
   .card { padding: 14px; border-radius: 14px; }
   .tbl th, .tbl td { padding: 8px 6px; }
 
@@ -114,7 +70,7 @@ button { -webkit-user-select: none; user-select: none; }
   .filters .seg { flex: 1 1 100%; }
   .filters .seg button { flex: 1; }
   .filters input[type=search] { flex: 1 1 100%; }
-  .filters select { flex: 1 1 calc(50% - 4px); min-width: 0; padding-left: 10px; padding-right: 4px; text-overflow: ellipsis; }
+  .filters select { flex: 1 1 calc(50% - 4px); min-width: 0; padding-left: 10px; padding-right: 30px; text-overflow: ellipsis; }
   .filters .chk { flex: 1 1 calc(50% - 4px); }
   #mkMore { width: 100%; margin-top: 8px; }
 
@@ -124,8 +80,8 @@ button { -webkit-user-select: none; user-select: none; }
   .cards .rh { display: none; }
   .cards tr.rc {
     display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; grid-template-areas: "pos name ovr" "pos club price" "pos val price" "act act act";
-    column-gap: 10px; row-gap: 2px; align-items: center; margin-bottom: 8px; padding: 10px 12px;
-    border: 1px solid rgba(255, 255, 255, .09); border-radius: 12px; background: rgba(255, 255, 255, .03);
+    column-gap: 10px; row-gap: 2px; align-items: center; margin-bottom: 8px; padding: 12px;
+    border: 1px solid var(--line); border-radius: 14px; background: #fff; box-shadow: var(--shadow);
   }
   .cards tr.rc td { display: block; min-width: 0; padding: 0; border: 0; background: none !important; box-shadow: none !important; white-space: normal; }
   .cards tr.rc.coach { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "name ovr" "club price" "act act"; }
@@ -168,7 +124,7 @@ button { -webkit-user-select: none; user-select: none; }
   .cards.tr .c-left::before { content: 'treinos hoje: '; }
   .cards.tr .c-gain { grid-area: gain; }
   .train-sel .btn { flex: 1 1 calc(33% - 6px); }
-  .train-acts { display: grid; grid-template-columns: 1fr 1fr; bottom: calc(8px + var(--sab)); }
+  .train-acts { display: grid; grid-template-columns: 1fr 1fr; bottom: calc(8px + var(--bottom-gap)); }
   .train-acts:not(.on) { position: static; } /* só flutua quando há jogador marcado */
   .train-acts .btn { min-width: 0; padding-left: 8px; padding-right: 8px; font-size: 13px; }
   .train-acts #trGo { grid-column: 1 / -1; }

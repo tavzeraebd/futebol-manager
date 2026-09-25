@@ -5,28 +5,55 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Football Manager Online</title>
   <link rel="manifest" href="manifest.webmanifest">
-  <meta name="theme-color" content="#090f1d">
-  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#ffffff">
+  <meta name="color-scheme" content="light">
   <meta name="format-detection" content="telephone=no">
-  <style>html { background: #090f1d; }</style>
+  <style>html { background: #f3f6f4; }</style>
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="FM Online">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
   <link rel="stylesheet" href="css/styles.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Barlow+Condensed:wght@600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/game.css">
-  <link rel="stylesheet" href="css/fm-theme.css">
+  <link rel="stylesheet" href="css/theme.css">
   <link rel="stylesheet" href="css/mobile.css">
 </head>
 <body>
+  <!-- Ícones (traço): usados com <svg class="ico"><use href="#i-..."/></svg> -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+    <symbol id="i-home" viewBox="0 0 24 24"><path d="M3.5 10.5 12 3.5l8.5 7V20a1 1 0 0 1-1 1H15v-6H9v6H4.5a1 1 0 0 1-1-1z"/></symbol>
+    <symbol id="i-users" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 4.6a3.5 3.5 0 0 1 0 6.8M18 14.2A6.5 6.5 0 0 1 21.5 20"/></symbol>
+    <symbol id="i-tactic" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M12 4v16"/><circle cx="12" cy="12" r="2.6"/><path d="M3 8.5h3v7H3M21 8.5h-3v7h3"/></symbol>
+    <symbol id="i-train" viewBox="0 0 24 24"><path d="M6.5 6.5v11M17.5 6.5v11M3.5 9v6M20.5 9v6M6.5 12h11"/></symbol>
+    <symbol id="i-stadium" viewBox="0 0 24 24"><ellipse cx="12" cy="8.5" rx="9" ry="3.8"/><path d="M3 8.5v6.5c0 2.1 4 3.8 9 3.8s9-1.7 9-3.8V8.5"/><path d="M7.5 12.2v4.6M12 12.6v5M16.5 12.2v4.6"/></symbol>
+    <symbol id="i-transfer" viewBox="0 0 24 24"><path d="M4 8h15l-4-4M20 16H5l4 4"/></symbol>
+    <symbol id="i-gavel" viewBox="0 0 24 24"><path d="m14.5 3.5 6 6-3 3-6-6z"/><path d="m13 8-8.2 8.2a1.6 1.6 0 0 0 2.3 2.3L15.3 10.3"/><path d="M3.5 21h9"/></symbol>
+    <symbol id="i-ball" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m12 7.2 4 2.9-1.5 4.7h-5L8 10.1z"/><path d="M12 7.2V3.2M16 10.1l3.9-1.3M14.5 14.8l2.4 3.3M9.5 14.8l-2.4 3.3M8 10.1 4.1 8.8"/></symbol>
+    <symbol id="i-trophy" viewBox="0 0 24 24"><path d="M8 21h8M12 16.5V21M7 4h10v5.5a5 5 0 0 1-10 0z"/><path d="M17 5.5h3v1.8a4 4 0 0 1-3.4 4M7 5.5H4v1.8a4 4 0 0 0 3.4 4"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m10 8.6 5.2 3.4-5.2 3.4z"/></symbol>
+    <symbol id="i-chart" viewBox="0 0 24 24"><path d="M4 20h16M7 16.5v-5M12 16.5V6.5M17 16.5v-8"/></symbol>
+    <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.8-3.8"/></symbol>
+    <symbol id="i-chev" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+    <symbol id="i-wallet" viewBox="0 0 24 24"><path d="M4 7.5A2.5 2.5 0 0 1 6.5 5H18v3"/><rect x="4" y="8" width="16" height="11" rx="2.5"/><path d="M16 13.5h.01"/></symbol>
+    <symbol id="i-pulse" viewBox="0 0 24 24"><path d="M3 12h4l2.5-6 5 12 2.5-6h4"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  </svg>
+
   <!-- Entrada -->
   <main id="auth" class="auth">
     <div class="auth-stack">
+      <div class="auth-brand">
+        <span class="auth-logo"><svg class="ico"><use href="#i-ball"/></svg></span>
+        <div><b>Football Manager Online</b><small>Monte seu clube e desafie os amigos</small></div>
+      </div>
+
       <div class="card auth-card" id="retryBox" hidden>
         <h1>Reconectando…</h1>
         <p class="muted" id="retryMsg"></p>
@@ -35,14 +62,14 @@
       </div>
 
       <div class="card auth-card" id="googleBox" hidden>
-        <h1>⚽ Football Manager Online</h1>
+        <h1>Acesse seu clube</h1>
         <p class="muted">Entre com sua conta Google para guardar seu clube e voltar de qualquer navegador.</p>
         <div id="googleBtn"></div>
         <p class="error" id="googleError"></p>
       </div>
 
       <form id="loginForm" class="card auth-card" hidden>
-        <h1>⚽ Entrar no clube</h1>
+        <h1>Entrar no clube</h1>
         <label>Nome do clube<input id="loginClub" maxlength="30" required autocomplete="username" autocapitalize="off" autocorrect="off" spellcheck="false"></label>
         <label>Senha<input id="loginPass" type="password" required autocomplete="current-password"></label>
         <button class="btn primary" type="submit">Entrar</button>
@@ -51,12 +78,12 @@
       </form>
 
       <form id="regForm" class="card auth-card" hidden>
-        <h1 id="regTitle">⚽ Criar clube</h1>
+        <h1 id="regTitle">Criar clube</h1>
         <p class="muted">Monte seu clube com <b>€ 500 milhões</b>, contrate craques (valor de mercado + 20% de ágio; venda por 75%) e desafie outros técnicos.</p>
         <label>Seu nome<input id="regManager" maxlength="30" required placeholder="Ex.: Ana Souza"></label>
         <label>Nome do clube<input id="regClub" maxlength="30" required placeholder="Ex.: Atlético do Bairro" autocomplete="username"></label>
         <label id="regPassLbl">Senha (para voltar depois)<input id="regPass" type="password" minlength="4" autocomplete="new-password"></label>
-        <label>Cor da camisa<input id="regColor" type="color" value="#d71920"></label>
+        <label>Cor da camisa<input id="regColor" type="color" value="#16a34a"></label>
         <button class="btn primary" type="submit">Criar clube</button>
         <p class="error" id="regError"></p>
         <a href="#" id="backLink" class="muted">&larr; Já tenho clube</a>
@@ -65,96 +92,167 @@
   </main>
 
   <!-- Jogo -->
-  <div id="game" hidden>
-    <header class="fm-nav" id="fmNav">
-      <div class="crest-frame"><span class="crest sm" id="tbCrest"></span></div>
-      <div class="m-title"><b id="mbClub"></b><small id="mbManager"></small></div>
-      <button class="btn menu-btn" id="btnMenu" type="button" aria-label="Conta e opções" aria-expanded="false" aria-controls="acctPanel">☰</button>
-      <div class="nav-main">
-        <div class="nav-row">
-          <nav class="tabs" id="tabs">
-            <button data-tab="market" class="on" type="button">Mercado</button>
-            <button data-tab="squad" type="button">Elenco</button>
-            <button data-tab="lineup" type="button">Escalação</button>
-            <button data-tab="train" type="button">Treino</button>
-            <button data-tab="facil" type="button">Estrutura</button>
-            <button data-tab="clubs" type="button">Clubes</button>
-            <button data-tab="leagues" type="button">Ligas</button>
-            <button data-tab="stats" type="button">Estatísticas</button>
-            <button data-tab="exch" type="button">Leilão e trocas</button>
-            <button data-tab="matches" type="button">Partidas</button>
-          </nav>
-          <div class="nav-right">
-            <div class="kpibox"><div><small>Saldo</small><b id="tbBudget"></b></div></div>
-            <div class="datebox"><b id="tbSource"></b><small>Fonte de dados</small></div>
-            <button class="btn primary wide" id="btnLogout" type="button">Sair</button>
-          </div>
-        </div>
-        <div class="subnav" id="acctPanel">
-          <span class="sub on" id="tbClub"></span>
-          <span class="sub" id="tbManager"></span>
-          <span class="sub">Conta: <b id="tbAccount"></b></span>
-          <span class="sub" id="linkGoogle"></span>
-          <button class="sub link" id="btnPw" type="button">Senha</button>
-          <button class="sub link only-m" id="btnLogout2" type="button">Sair</button>
-        </div>
+  <div id="game" class="shell" hidden>
+    <header class="topbar" id="fmNav">
+      <button class="icon-btn menu-btn" id="btnMenu" type="button" aria-label="Abrir menu" aria-expanded="false" aria-controls="sideNav"><svg class="ico"><use href="#i-menu"/></svg></button>
+      <a href="#" class="brand" data-tab="home" aria-label="Início do clube">
+        <span class="crest" id="tbCrest"></span>
+        <span class="brand-txt"><b id="mbClub"></b><small>Portal do clube</small></span>
+      </a>
+      <label class="gsearch">
+        <svg class="ico"><use href="#i-search"/></svg>
+        <input id="gSearch" type="search" placeholder="Buscar jogador ou clube no mercado…" autocomplete="off" aria-label="Buscar jogador ou clube no mercado">
+      </label>
+      <div class="top-right">
+        <div class="chip-kpi"><small>Saldo</small><b id="tbBudget"></b></div>
+        <div class="chip-src"><b id="tbSource"></b><small>Fonte de dados</small></div>
+        <button class="acct-btn" id="btnAcct" type="button" aria-label="Conta e opções" aria-expanded="false" aria-controls="acctPanel">
+          <span class="me-av" id="tbAvatar"></span><svg class="ico chev"><use href="#i-chev"/></svg>
+        </button>
+      </div>
+      <div class="acct-pop" id="acctPanel">
+        <div class="acct-head"><b id="tbClub"></b><small id="tbManager"></small></div>
+        <div class="acct-row"><small>Conta</small><b id="tbAccount"></b></div>
+        <div id="linkGoogle"></div>
+        <button class="acct-item" id="btnPw" type="button">Senha</button>
+        <button class="acct-item danger" id="btnLogout" type="button">Sair</button>
       </div>
     </header>
 
-    <section class="hero">
-      <div class="hero-crest"><span class="crest" id="heroCrest"></span></div>
-      <div class="hero-id">
-        <div class="hero-name" id="heroName"></div>
-        <div class="hero-sub">Portal do clube</div>
+    <aside class="sidenav" id="sideNav" aria-label="Menu do clube">
+      <div class="drawer-head">
+        <span class="crest" id="dwCrest"></span>
+        <div class="dw-id"><b id="dwClub"></b><small id="mbManager"></small></div>
+        <button class="icon-btn" id="btnNavClose" type="button" aria-label="Fechar menu"><svg class="ico"><use href="#i-close"/></svg></button>
       </div>
-      <div class="hero-stats">
-        <div><small>Elenco</small><b id="tbSquad"></b></div>
-        <div><small>Técnico do clube</small><b id="tbCoach"></b></div>
-        <div><small>Valor do elenco</small><b id="heroValue"></b></div>
+      <nav class="nav" id="tabs">
+        <button class="nav-item" data-tab="home" type="button"><svg class="ico"><use href="#i-home"/></svg><span>Início</span></button>
+        <div class="nav-label">Clube</div>
+        <button class="nav-item" data-tab="squad" type="button"><svg class="ico"><use href="#i-users"/></svg><span>Elenco</span></button>
+        <button class="nav-item" data-tab="lineup" type="button"><svg class="ico"><use href="#i-tactic"/></svg><span>Escalação e tática</span></button>
+        <button class="nav-item" data-tab="train" type="button"><svg class="ico"><use href="#i-train"/></svg><span>Centro de Treino</span></button>
+        <button class="nav-item" data-tab="facil" type="button"><svg class="ico"><use href="#i-stadium"/></svg><span>Estrutura</span></button>
+        <div class="nav-label">Mercado</div>
+        <button class="nav-item" data-tab="market" type="button"><svg class="ico"><use href="#i-transfer"/></svg><span>Transferências</span></button>
+        <button class="nav-item" data-tab="exch" type="button"><svg class="ico"><use href="#i-gavel"/></svg><span>Leilões e trocas</span></button>
+        <div class="nav-label">Competição</div>
+        <button class="nav-item" data-tab="clubs" type="button"><svg class="ico"><use href="#i-ball"/></svg><span>Jogar</span></button>
+        <button class="nav-item" data-tab="leagues" type="button"><svg class="ico"><use href="#i-trophy"/></svg><span>Ligas e copas</span></button>
+        <button class="nav-item" data-tab="matches" type="button"><svg class="ico"><use href="#i-play"/></svg><span>Partidas</span></button>
+        <button class="nav-item" data-tab="stats" type="button"><svg class="ico"><use href="#i-chart"/></svg><span>Estatísticas</span></button>
+      </nav>
+      <div class="side-cta">
+        <b>Bora pro jogo?</b>
+        <small>Desafie um técnico online ou teste a escalação contra a CPU.</small>
+        <button class="btn sm" data-tab="clubs" type="button">Jogar agora</button>
       </div>
-    </section>
+    </aside>
+    <div class="scrim" id="navScrim"></div>
 
     <main class="page">
-      <section id="tab-market" class="card">
-        <div class="filters">
-          <div class="seg" id="mkKind"><button data-k="player" class="on" type="button">Jogadores</button><button data-k="coach" type="button">Técnicos</button></div>
-          <input id="mkSearch" type="search" placeholder="Buscar jogador (ex.: Igor)">
-          <select id="mkPos">
-            <option value="ALL">Todas posições</option><option value="GK">Goleiros</option><option value="DEF">Defensores</option>
-            <option value="MID">Meio-campistas</option><option value="FWD">Atacantes</option>
-          </select>
-          <select id="mkSort">
-            <option value="value-desc">Maior valor</option><option value="value-asc">Menor valor</option>
-            <option value="ovr-desc">Maior nota</option><option value="name">Nome</option>
-          </select>
-          <label class="chk"><input type="checkbox" id="mkFree" checked> Só disponíveis</label>
-          <label class="chk"><input type="checkbox" id="mkAfford"> Só que posso pagar</label>
+      <!-- Início -->
+      <section id="tab-home" class="view">
+        <div class="page-head">
+          <div><h1 id="hmHello">Bem-vindo de volta!</h1><p>Aqui está um resumo do seu clube. Vamos buscar grandes resultados!</p></div>
+          <div class="head-side">
+            <div class="hchip"><small>Hoje</small><b id="hmDate"></b></div>
+            <div class="hchip"><small>Técnicos online</small><b id="hmOnline">—</b></div>
+          </div>
         </div>
-        <p class="muted" id="mkStatus" hidden></p>
-        <div class="table-wrap"><table class="tbl cards" id="mkTable"></table></div>
-        <button class="btn" id="mkMore" type="button" hidden>Mostrar mais</button>
+
+        <div class="stadium">
+          <div class="stadium-art" aria-hidden="true"></div>
+          <div class="stadium-body">
+            <span class="crest xl" id="heroCrest"></span>
+            <div class="stadium-id">
+              <div class="hero-name" id="heroName"></div>
+              <div class="hero-sub" id="heroSub">Portal do clube</div>
+              <div class="hero-acts">
+                <button class="btn primary" data-tab="lineup" type="button">Escalação</button>
+                <button class="btn glass" data-tab="clubs" type="button"><svg class="ico"><use href="#i-ball"/></svg>Jogar</button>
+              </div>
+            </div>
+          </div>
+          <div class="stadium-strip">
+            <div><small>Elenco</small><b id="tbSquad"></b></div>
+            <div><small>Técnico do clube</small><b id="tbCoach"></b></div>
+            <div><small>Valor do elenco</small><b id="heroValue"></b></div>
+            <div><small>Estádio</small><b id="heroStadium"></b></div>
+          </div>
+        </div>
+
+        <div class="kpis4" id="hmKpis"></div>
+
+        <div class="home-grid">
+          <div class="card">
+            <div class="card-head"><h2>Últimos jogos</h2><a href="#" class="link" data-tab="matches">Ver todos</a></div>
+            <div id="hmGames"></div>
+          </div>
+          <div class="card">
+            <div class="card-head"><h2>Destaques do elenco</h2><a href="#" class="link" data-tab="squad">Ver elenco</a></div>
+            <div id="hmStars"></div>
+          </div>
+        </div>
       </section>
 
-      <section id="tab-squad" class="card" hidden>
-        <h2>Elenco</h2>
-        <p class="muted" id="sqInfo"></p>
-        <div class="table-wrap"><table class="tbl cards sq" id="sqTable"></table></div>
-        <h2>Técnico</h2>
-        <div id="sqCoach"></div>
+      <!-- Mercado -->
+      <section id="tab-market" class="view" hidden>
+        <div class="page-head"><div><h1>Mercado de transferências</h1><p>Contrate jogadores e técnicos com o saldo do clube</p></div></div>
+        <div class="card">
+          <div class="filters">
+            <div class="seg" id="mkKind"><button data-k="player" class="on" type="button">Jogadores</button><button data-k="coach" type="button">Técnicos</button></div>
+            <input id="mkSearch" type="search" placeholder="Buscar jogador (ex.: Igor)">
+            <select id="mkPos">
+              <option value="ALL">Todas posições</option><option value="GK">Goleiros</option><option value="DEF">Defensores</option>
+              <option value="MID">Meio-campistas</option><option value="FWD">Atacantes</option>
+            </select>
+            <select id="mkSort">
+              <option value="value-desc">Maior valor</option><option value="value-asc">Menor valor</option>
+              <option value="ovr-desc">Maior nota</option><option value="name">Nome</option>
+            </select>
+            <label class="chk"><input type="checkbox" id="mkFree" checked> Só disponíveis</label>
+            <label class="chk"><input type="checkbox" id="mkAfford"> Só que posso pagar</label>
+          </div>
+          <p class="muted" id="mkStatus" hidden></p>
+          <div class="table-wrap"><table class="tbl cards" id="mkTable"></table></div>
+          <button class="btn" id="mkMore" type="button" hidden>Mostrar mais</button>
+        </div>
       </section>
 
-      <section id="tab-lineup" class="card" hidden>
-        <div class="lineup-head">
-          <h2>Escalação</h2>
-          <label>Formação <select id="luFormation"></select></label>
-          <button class="btn" id="luAuto" type="button">Escalar automaticamente</button>
-          <span class="muted" id="luOvr"></span>
+      <!-- Elenco -->
+      <section id="tab-squad" class="view" hidden>
+        <div class="page-head">
+          <div><h1>Elenco</h1><p>Gerencie os jogadores do seu clube</p></div>
+          <div class="head-side">
+            <div class="hchip"><small>Total de jogadores</small><b id="sqCount"></b></div>
+            <button class="btn primary" data-tab="market" type="button"><svg class="ico"><use href="#i-plus"/></svg>Contratar</button>
+          </div>
         </div>
-        <div class="lineup-grid">
-          <div class="mini-pitch" id="luPitch"></div>
-          <div id="luSlots"></div>
+        <div class="card">
+          <p class="muted" id="sqInfo"></p>
+          <div class="table-wrap"><table class="tbl cards sq" id="sqTable"></table></div>
         </div>
-        <div class="tactics">
+        <div class="card">
+          <h2>Técnico</h2>
+          <div id="sqCoach"></div>
+        </div>
+      </section>
+
+      <!-- Escalação -->
+      <section id="tab-lineup" class="view" hidden>
+        <div class="page-head"><div><h1>Escalação e tática</h1><p>Monte o time titular, o estilo de jogo e as trocas durante a partida</p></div></div>
+        <div class="card">
+          <div class="lineup-head">
+            <label>Formação <select id="luFormation"></select></label>
+            <button class="btn" id="luAuto" type="button">Escalar automaticamente</button>
+            <span class="muted" id="luOvr"></span>
+          </div>
+          <div class="lineup-grid">
+            <div class="mini-pitch" id="luPitch"></div>
+            <div id="luSlots"></div>
+          </div>
+        </div>
+        <div class="card tactics">
           <h2>Tática e substituições</h2>
           <label>Estilo de jogo <select id="tcStyle"></select></label>
           <p class="muted" id="tcHelp"></p>
@@ -171,42 +269,51 @@
         </div>
       </section>
 
-      <section id="tab-train" class="card" hidden>
-        <div class="row-between"><h2>🏋️ Centro de Treinamento</h2><span class="muted" id="trSummary"></span></div>
-        <details class="train-help" id="trHelpBox"><summary>Como funcionam o treino e a condição física</summary><p class="muted" id="trHelp"></p></details>
-        <div class="train-ctrl">
-          <label>Foco do treino <select id="trFocus"></select></label>
-          <div class="train-int"><span>Intensidade</span><div class="seg" id="trInt"><button data-i="light" type="button">Leve</button><button data-i="normal" class="on" type="button">Normal</button><button data-i="hard" type="button">Forte</button></div></div>
-          <p class="muted small" id="trIntHelp"></p>
-        </div>
-        <div class="train-sel" id="trSel"><span class="muted">Selecionar:</span><button class="btn sm" data-sel="all" type="button">Todos</button><button class="btn sm" data-sel="xi" type="button">Titulares</button><button class="btn sm" data-sel="bench" type="button">Reservas</button><button class="btn sm" data-sel="ready" type="button">Podem treinar</button><button class="btn sm" data-sel="tired" type="button">Cansados</button><button class="btn sm" data-sel="none" type="button">Nenhum</button></div>
-        <div class="table-wrap"><table class="tbl cards tr" id="trTable"></table></div>
-        <div class="train-acts" id="trActs">
-          <button class="btn primary" id="trGo" type="button">Treinar</button>
-          <button class="btn" id="trRest" type="button">Descansar</button>
-          <button class="btn" id="trPhysio" type="button">Fisioterapia</button>
+      <!-- Centro de Treinamento -->
+      <section id="tab-train" class="view" hidden>
+        <div class="page-head"><div><h1>Centro de Treinamento</h1><p id="trSummary"></p></div></div>
+        <div class="card">
+          <details class="train-help" id="trHelpBox"><summary>Como funcionam o treino e a condição física</summary><p class="muted" id="trHelp"></p></details>
+          <div class="train-ctrl">
+            <label>Foco do treino <select id="trFocus"></select></label>
+            <div class="train-int"><span>Intensidade</span><div class="seg" id="trInt"><button data-i="light" type="button">Leve</button><button data-i="normal" class="on" type="button">Normal</button><button data-i="hard" type="button">Forte</button></div></div>
+            <p class="muted small" id="trIntHelp"></p>
+          </div>
+          <div class="train-sel" id="trSel"><span class="muted">Selecionar:</span><button class="btn sm" data-sel="all" type="button">Todos</button><button class="btn sm" data-sel="xi" type="button">Titulares</button><button class="btn sm" data-sel="bench" type="button">Reservas</button><button class="btn sm" data-sel="ready" type="button">Podem treinar</button><button class="btn sm" data-sel="tired" type="button">Cansados</button><button class="btn sm" data-sel="none" type="button">Nenhum</button></div>
+          <div class="table-wrap"><table class="tbl cards tr" id="trTable"></table></div>
+          <div class="train-acts" id="trActs">
+            <button class="btn primary" id="trGo" type="button">Treinar</button>
+            <button class="btn" id="trRest" type="button">Descansar</button>
+            <button class="btn" id="trPhysio" type="button">Fisioterapia</button>
+          </div>
         </div>
       </section>
 
-      <section id="tab-facil" class="card" hidden>
-        <div class="row-between"><h2>🏗️ Estrutura do clube</h2><span class="muted" id="fcSummary"></span></div>
-        <p class="muted">Invista o saldo nas instalações do clube. Cada uma vai do nível 1 ao 5, e a melhoria vale até a temporada recomeçar.</p>
+      <!-- Estrutura -->
+      <section id="tab-facil" class="view" hidden>
+        <div class="page-head"><div><h1>Estrutura do clube</h1><p>Invista o saldo nas instalações. Cada uma vai do nível 1 ao 5, e a melhoria vale até a temporada recomeçar.</p><p class="small" id="fcSummary"></p></div></div>
         <div class="fac-grid" id="fcList"></div>
       </section>
 
-      <section id="tab-stats" class="card" hidden>
-        <h2>Estatísticas</h2>
-        <p class="muted">Artilharia e assistências de todos os jogadores, com o clube de cada um. Contam só as partidas entre jogadores (contra a CPU é teste). Toque em um jogador para ver a ficha ou em um clube para ver o elenco.</p>
+      <!-- Estatísticas -->
+      <section id="tab-stats" class="view" hidden>
+        <div class="page-head"><div><h1>Estatísticas</h1><p>Artilharia e assistências de todos os jogadores, com o clube de cada um. Contam só as partidas entre jogadores (contra a CPU é teste). Toque em um jogador para ver a ficha ou em um clube para ver o elenco.</p></div></div>
         <div class="stat-grid" id="stBoards"><p class="muted">Carregando…</p></div>
       </section>
 
-      <section id="tab-clubs" class="card" hidden>
-        <div class="row-between"><h2>Clubes e classificação</h2><button class="btn primary" id="btnCpu" type="button" title="Só para testar a escalação: não vale pontos nem dinheiro">Testar contra a CPU</button></div>
-        <p class="muted">Contra a CPU é só teste de escalação: não vale pontos nem dinheiro. Pontos e prêmios só em jogos entre jogadores.</p>
-        <p class="muted">Vitória = 3 pts. Para desafiar outro técnico, ele precisa estar online e com o time escalado.</p>
-        <div class="table-wrap"><table class="tbl t-clubs" id="clTable"></table></div>
-        <div class="play-box">
-          <h2>🎮 Jogar você mesmo</h2>
+      <!-- Jogar: clubes e classificação -->
+      <section id="tab-clubs" class="view" hidden>
+        <div class="page-head">
+          <div><h1>Jogar</h1><p>Desafie outro técnico (ele precisa estar online e com o time escalado). Vitória vale 3 pontos.</p></div>
+          <div class="head-side"><button class="btn primary" id="btnCpu" type="button" title="Só para testar a escalação: não vale pontos nem dinheiro"><svg class="ico"><use href="#i-ball"/></svg>Testar contra a CPU</button></div>
+        </div>
+        <div class="card">
+          <div class="card-head"><h2>Classificação geral</h2><span class="muted small"><span class="dot on"></span>online agora</span></div>
+          <p class="muted">Contra a CPU é só teste de escalação: não vale pontos nem dinheiro. Pontos e prêmios só em jogos entre jogadores.</p>
+          <div class="table-wrap"><table class="tbl t-clubs" id="clTable"></table></div>
+        </div>
+        <div class="card play-box">
+          <h2>Jogar você mesmo</h2>
           <p class="muted">Você controla o jogador mais próximo da bola. Não vale prêmio nem pontos: é treino para se divertir.</p>
           <div class="inline-form">
             <select id="plOpp"></select>
@@ -216,50 +323,70 @@
         </div>
       </section>
 
-      <section id="tab-leagues" class="card" hidden>
-        <div id="lgHome">
-          <div class="row-between"><h2>Ligas e copas entre amigos</h2><button class="btn primary" id="lgNew" type="button">Criar liga ou copa</button></div>
-          <p class="muted">Crie uma sala e passe o código para os amigos entrarem. O dono da sala inicia a competição.</p>
-          <form id="lgJoinForm" class="inline-form">
-            <input id="lgCode" maxlength="10" placeholder="Código da sala (ex.: K7QM2X)" autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false" required>
-            <button class="btn" type="submit">Entrar com código</button>
-          </form>
-          <p class="error" id="lgError"></p>
-          <div id="lgList" class="lg-list"></div>
+      <!-- Ligas e copas -->
+      <section id="tab-leagues" class="view" hidden>
+        <div class="page-head">
+          <div><h1>Ligas e copas</h1><p>Crie uma sala e passe o código para os amigos entrarem. O dono da sala inicia a competição.</p></div>
+          <div class="head-side"><button class="btn primary" id="lgNew" type="button"><svg class="ico"><use href="#i-plus"/></svg>Criar liga ou copa</button></div>
         </div>
-        <div id="lgDetail" hidden></div>
-        <div class="side-box" id="lgChatBox" hidden>
-          <div class="side-title">💬 Chat da sala</div>
-          <div id="lgChat" class="vchat"></div>
-          <form id="lgChatForm" class="chat-form">
-            <input id="lgChatInput" maxlength="140" placeholder="Provoque os amigos…" autocomplete="off">
-            <button class="btn primary sm" type="submit">Enviar</button>
-          </form>
+        <div class="card">
+          <div id="lgHome">
+            <form id="lgJoinForm" class="inline-form">
+              <input id="lgCode" maxlength="10" placeholder="Código da sala (ex.: K7QM2X)" autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false" required>
+              <button class="btn" type="submit">Entrar com código</button>
+            </form>
+            <p class="error" id="lgError"></p>
+            <div id="lgList" class="lg-list"></div>
+          </div>
+          <div id="lgDetail" hidden></div>
+          <div class="side-box" id="lgChatBox" hidden>
+            <div class="side-title">💬 Chat da sala</div>
+            <div id="lgChat" class="vchat"></div>
+            <form id="lgChatForm" class="chat-form">
+              <input id="lgChatInput" maxlength="140" placeholder="Provoque os amigos…" autocomplete="off">
+              <button class="btn primary sm" type="submit">Enviar</button>
+            </form>
+          </div>
         </div>
       </section>
 
-      <section id="tab-exch" class="card" hidden>
-        <h2>🔨 Leilões ao vivo</h2>
-        <p class="muted">Cada leilão dura 45 s; um lance nos últimos 10 s estende o tempo. O vencedor paga ao vendedor o valor cheio do lance. O preço inicial é escolhido pelo dono, mas precisa ficar perto da média de jogadores parecidos (a tela de venda mostra a referência). <b>Só dá para leiloar jogadores e técnico do seu clube</b> (botão "Leiloar" na aba Elenco); quem está no mercado se contrata direto.</p>
-        <div id="xLive" class="auc-list"></div>
-        <div class="side-title">Encerrados</div>
-        <div id="xDone" class="vfeed"></div>
-
-        <h2 class="sp">🤝 Trocas entre clubes</h2>
-        <form id="xTradeForm" class="trade-form">
-          <select id="xTo"></select>
-          <div class="trade-cols"><div><b>Você dá</b><div id="xGive" class="chk-list"></div></div><div><b>Você recebe</b><div id="xGet" class="chk-list"></div></div></div>
-          <label>Dinheiro (milhões de €; positivo = você paga, negativo = você recebe) <input id="xCash" inputmode="decimal" placeholder="0"></label>
-          <button class="btn primary" type="submit">Enviar proposta</button>
-        </form>
-        <div id="xTrades"></div>
+      <!-- Leilões e trocas -->
+      <section id="tab-exch" class="view" hidden>
+        <div class="page-head"><div><h1>Leilões e trocas</h1><p>Venda para quem pagar mais ou negocie jogadores direto com outro clube</p></div></div>
+        <div class="card">
+          <h2>Leilões ao vivo</h2>
+          <p class="muted">Cada leilão dura 45 s; um lance nos últimos 10 s estende o tempo. O vencedor paga ao vendedor o valor cheio do lance. O preço inicial é escolhido pelo dono, mas precisa ficar perto da média de jogadores parecidos (a tela de venda mostra a referência). <b>Só dá para leiloar jogadores e técnico do seu clube</b> (botão "Leiloar" na aba Elenco); quem está no mercado se contrata direto.</p>
+          <div id="xLive" class="auc-list"></div>
+          <div class="side-title">Encerrados</div>
+          <div id="xDone" class="vfeed"></div>
+        </div>
+        <div class="card">
+          <h2>Trocas entre clubes</h2>
+          <form id="xTradeForm" class="trade-form">
+            <select id="xTo"></select>
+            <div class="trade-cols"><div><b>Você dá</b><div id="xGive" class="chk-list"></div></div><div><b>Você recebe</b><div id="xGet" class="chk-list"></div></div></div>
+            <label>Dinheiro (milhões de €; positivo = você paga, negativo = você recebe) <input id="xCash" inputmode="decimal" placeholder="0"></label>
+            <button class="btn primary" type="submit">Enviar proposta</button>
+          </form>
+          <div id="xTrades"></div>
+        </div>
       </section>
 
-      <section id="tab-matches" class="card" hidden>
-        <h2>Últimas partidas</h2>
-        <div class="table-wrap"><table class="tbl cards mt" id="mtTable"></table></div>
+      <!-- Partidas -->
+      <section id="tab-matches" class="view" hidden>
+        <div class="page-head"><div><h1>Partidas</h1><p>As últimas partidas do servidor. Toque em Assistir para rever o jogo com narração.</p></div></div>
+        <div class="card"><div class="table-wrap"><table class="tbl cards mt" id="mtTable"></table></div></div>
       </section>
     </main>
+
+    <!-- Celular: barra de navegação inferior -->
+    <nav class="bottom-nav" id="bottomNav" aria-label="Atalhos">
+      <button class="bn-item" data-tab="home" type="button"><span class="pill"><svg class="ico"><use href="#i-home"/></svg></span>Início</button>
+      <button class="bn-item" data-tab="lineup" type="button"><span class="pill"><svg class="ico"><use href="#i-tactic"/></svg></span>Escalação</button>
+      <button class="bn-item bn-play" data-tab="clubs" type="button"><span class="ball"><svg class="ico"><use href="#i-ball"/></svg></span>Jogar</button>
+      <button class="bn-item" data-tab="market" type="button"><span class="pill"><svg class="ico"><use href="#i-transfer"/></svg></span>Mercado</button>
+      <button class="bn-item" id="bnMore" type="button" aria-label="Menu com todas as seções" aria-expanded="false" aria-controls="sideNav"><span class="pill"><svg class="ico"><use href="#i-menu"/></svg></span>Menu</button>
+    </nav>
   </div>
 
   <!-- Assistir partida -->

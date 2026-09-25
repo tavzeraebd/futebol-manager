@@ -6,7 +6,7 @@
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const STEP = 1 / 60;
 
-  const S = { google: null, credential: null, gsiMode: 'login', token: null, me: null, meta: null, catalog: null, clubs: [], matches: [], tab: 'market', kind: 'player', shown: 60, lineup: null, formation: null };
+  const S = { google: null, credential: null, gsiMode: 'login', token: null, me: null, meta: null, catalog: null, clubs: [], matches: [], tab: 'home', kind: 'player', shown: 60, lineup: null, formation: null };
   let stream = null;
 
   /* ---------- utilidades ---------- */
@@ -120,6 +120,7 @@
     showLogin();
   }
   $('btnLogout').onclick = () => {
+    $('fmNav').classList.remove('acct-open');
     const safe = S.me && (S.me.google || S.me.hasPassword);
     const msg = safe
       ? 'Sair? Seu clube continua salvo: entre de novo com o nome do clube e a senha' + (S.me.google ? ' (ou com o Google)' : '') + '.'
@@ -253,14 +254,17 @@
 
   function renderTop() {
     const m = S.me;
-    crest($('tbCrest'), m.name, m.color);
-    crest($('heroCrest'), m.name, m.color);
+    for (const id of ['tbCrest', 'dwCrest', 'heroCrest']) crest($(id), m.name, m.color);
     $('heroName').textContent = m.name;
+    $('heroSub').textContent = 'Técnico ' + m.manager + ' · Portal do clube';
     if (S.catalog) $('heroValue').textContent = money(m.squad.map(player).filter(Boolean).reduce((t, p) => t + p.value, 0));
+    $('heroStadium').textContent = 'Nível ' + ((m.facilities && m.facilities.stadium) || 1);
     $('tbClub').textContent = m.name;
     $('tbManager').textContent = 'Técnico: ' + m.manager;
-    $('mbClub').textContent = m.name; // barra compacta do celular
+    $('mbClub').textContent = m.name;
+    $('dwClub').textContent = m.name; // gaveta do menu (celular)
     $('mbManager').textContent = 'Técnico: ' + m.manager;
+    $('tbAvatar').textContent = m.manager.split(' ').filter(Boolean).map(w => w[0]).join('').slice(0, 2).toUpperCase() || '?';
     $('tbBudget').textContent = money(m.budget);
     $('tbSquad').textContent = m.squad.length + '/' + S.meta.squadMax;
     const c = m.coach && S.catalog && coach(m.coach);
@@ -273,10 +277,11 @@
   function connect() {
     if (stream) stream.close();
     stream = new EventSource(S.token ? '/api/events?token=' + encodeURIComponent(S.token) : '/api/events');
-    stream.addEventListener('clubs', () => { if (S.tab === 'clubs') loadClubs(); });
+    stream.addEventListener('clubs', () => { if (S.tab === 'clubs') loadClubs(); if (S.tab === 'home') loadHome(); });
     stream.addEventListener('market', async () => {
       await loadCatalog();
       try { S.me = (await api('GET', '/api/me')).club; renderTop(); } catch (_) { /* segue */ } // sem mexer numa escalação em edição
+      if (S.tab === 'home') renderHome();
       if (S.tab === 'squad') renderSquad();
       if (S.tab === 'train') renderTrain();
       if (S.tab === 'facil') renderFacil();
@@ -357,25 +362,44 @@
   window.addEventListener('pageshow', e => { if (e.persisted) resync(); });
   window.addEventListener('online', () => resync());
 
-  /* ---------- abas ---------- */
-  $('tabs').onclick = e => { const b = e.target.closest('button'); if (b) showTab(b.dataset.tab); };
-  // menu da conta (celular): abre por cima do conteúdo e fecha ao tocar fora, numa aba ou numa opção
-  const setMenu = open => { $('fmNav').classList.toggle('menu-open', open); $('btnMenu').setAttribute('aria-expanded', open ? 'true' : 'false'); };
-  $('btnMenu').onclick = () => setMenu(!$('fmNav').classList.contains('menu-open'));
-  $('btnLogout2').onclick = () => { setMenu(false); $('btnLogout').click(); };
-  $('btnPw').addEventListener('click', () => setMenu(false));
-  document.addEventListener('click', e => { if (!e.target.closest('#fmNav')) setMenu(false); });
-  function centerTab() { // no celular as abas rolam de lado: mantém a aba ativa à vista
-    const tabs = $('tabs'), on = tabs.querySelector('.on');
-    if (!on || tabs.scrollWidth <= tabs.clientWidth) return;
-    const r = on.getBoundingClientRect(), t = tabs.getBoundingClientRect();
-    tabs.scrollBy({ left: r.left - t.left - (t.width - r.width) / 2, behavior: 'smooth' });
+  /* ---------- navegação ---------- */
+  // Qualquer elemento com data-tab leva à seção (barra lateral, barra de baixo, atalhos do Início). Abaixo de 1024 px a barra
+  // lateral vira uma gaveta: abre pelo "Menu" da barra de baixo (ou pelo ☰ com o celular deitado) e fecha ao escolher, tocar fora ou Esc.
+  const drawerMode = () => matchMedia('(max-width: 1023px)').matches;
+  function setNav(open) {
+    $('game').classList.toggle('nav-open', open);
+    for (const id of ['btnMenu', 'bnMore']) $(id).setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (open && drawerMode()) ($('sideNav').querySelector('.nav-item.on') || $('sideNav').querySelector('.nav-item')).focus({ preventScroll: true });
   }
+  // menu da conta (avatar): abre por cima do conteúdo e fecha ao tocar fora ou numa opção
+  const setAcct = open => { $('fmNav').classList.toggle('acct-open', open); $('btnAcct').setAttribute('aria-expanded', open ? 'true' : 'false'); };
+  $('btnMenu').onclick = $('bnMore').onclick = () => setNav(!$('game').classList.contains('nav-open'));
+  $('btnNavClose').onclick = $('navScrim').onclick = () => setNav(false);
+  $('btnAcct').onclick = () => setAcct(!$('fmNav').classList.contains('acct-open'));
+  $('btnPw').addEventListener('click', () => setAcct(false));
+  document.addEventListener('click', e => { if (!e.target.closest('#fmNav')) setAcct(false); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') { setNav(false); setAcct(false); } });
+  $('game').addEventListener('click', e => {
+    const b = e.target.closest('[data-tab]');
+    if (b) { e.preventDefault(); showTab(b.dataset.tab); }
+  });
+  // busca do topo: procura no mercado
+  $('gSearch').addEventListener('input', () => {
+    if (S.tab !== 'market') showTab('market');
+    $('mkSearch').value = $('gSearch').value;
+    $('mkSearch').dispatchEvent(new Event('input'));
+  });
+
   function showTab(t) {
+    const changed = S.tab !== t;
     S.tab = t;
-    for (const b of $('tabs').children) b.classList.toggle('on', b.dataset.tab === t);
-    setMenu(false); centerTab();
-    for (const id of ['market', 'squad', 'lineup', 'train', 'facil', 'clubs', 'leagues', 'stats', 'exch', 'matches']) $('tab-' + id).hidden = id !== t;
+    for (const b of document.querySelectorAll('.nav-item[data-tab], .bn-item[data-tab]')) b.classList.toggle('on', b.dataset.tab === t);
+    $('bnMore').classList.toggle('on', !document.querySelector('.bn-item[data-tab="' + t + '"]')); // seção que só está na gaveta
+    setNav(false); setAcct(false);
+    if (t !== 'market') $('gSearch').value = '';
+    if (changed) window.scrollTo(0, 0);
+    for (const id of ['home', 'market', 'squad', 'lineup', 'train', 'facil', 'clubs', 'leagues', 'stats', 'exch', 'matches']) $('tab-' + id).hidden = id !== t;
+    if (t === 'home') loadHome();
     if (t === 'market') renderMarket();
     if (t === 'squad') renderSquad();
     if (t === 'lineup') renderLineup();
@@ -387,6 +411,59 @@
     if (t === 'exch') loadClubs().then(loadExchange);
     if (t === 'matches') loadMatches();
   }
+
+  /* ---------- início: resumo do clube ---------- */
+  const ROLE_NAME = { GK: 'Goleiro', DEF: 'Defensor', MID: 'Meio-campista', FWD: 'Atacante' };
+  const ico = (name, cls) => '<svg class="ico' + (cls ? ' ' + cls : '') + '"><use href="#i-' + name + '"/></svg>';
+  async function loadHome() {
+    renderHome();
+    try {
+      const [c, m] = await Promise.all([api('GET', '/api/clubs'), api('GET', '/api/matches')]);
+      S.clubs = c.clubs; S.matches = m.matches;
+    } catch (_) { return; } // o resumo já aparece com o que há; o próximo evento atualiza
+    if (S.tab === 'home') renderHome();
+  }
+  function renderHome() {
+    const me = S.me, sq = me.squad.map(player).filter(Boolean);
+    $('hmHello').textContent = 'Bem-vindo de volta, ' + (me.manager.split(' ')[0] || 'técnico') + '!';
+    $('hmDate').textContent = new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' }).replace('.', '');
+    const online = S.clubs.filter(c => c.online && c.id !== me.id).length;
+    $('hmOnline').textContent = S.clubs.length ? String(online) : '—';
+
+    const rank = S.clubs.findIndex(c => c.id === me.id);
+    const xi = me.lineup.filter(id => id && me.squad.includes(id));
+    const cond = xi.length ? Math.round(xi.reduce((t, id) => t + fitOf(id).cond, 0) / xi.length) : null;
+    const kpi = (icon, cls, label, value, sub, subCls) => '<div class="kpi"><span class="kpi-ico' + (cls ? ' ' + cls : '') + '">' + ico(icon) + '</span><div><small>' + label + '</small><b>' + value + '</b><span class="sub' + (subCls ? ' ' + subCls : '') + '">' + sub + '</span></div></div>';
+    $('hmKpis').innerHTML =
+      kpi('trophy', 'gold', 'Classificação', rank >= 0 ? rank + 1 + 'º' : '—', rank >= 0 ? 'de ' + S.clubs.length + ' clubes · ' + me.points + ' pts' : 'carregando…') +
+      kpi('wallet', '', 'Saldo em conta', money(me.budget), 'para contratar e investir') +
+      kpi('ball', 'blue', 'Campanha', me.w + 'V ' + me.d + 'E ' + me.l + 'D', me.played ? Math.round((me.points / (me.played * 3)) * 100) + '% de aproveitamento' : 'nenhum jogo oficial ainda', me.played ? 'up' : '') +
+      kpi('pulse', '', 'Condição dos titulares', cond == null ? '—' : cond + '%', xi.length ? xi.length + '/11 escalados' : 'escale o time', cond != null && cond >= 80 ? 'up' : '');
+
+    const mine = S.matches.filter(m => m.home.id === me.id || m.away.id === me.id).slice(0, 5);
+    const clubOf = id => S.clubs.find(c => c.id === id);
+    $('hmGames').innerHTML = mine.length
+      ? '<div class="glist"><div class="ghead"><span class="g-date">Data</span><span class="g-opp">Adversário</span><span class="g-comp">Competição</span><span class="g-res">Resultado</span></div>' + mine.map(m => {
+        const home = m.home.id === me.id, opp = home ? m.away : m.home, oc = opp.id && clubOf(opp.id);
+        const gf = m.score[home ? 0 : 1], ga = m.score[home ? 1 : 0];
+        let r = gf > ga ? 'w' : gf < ga ? 'l' : 'd';
+        if (r === 'd' && m.pens) r = m.pens[home ? 0 : 1] > m.pens[home ? 1 : 0] ? 'w' : 'l';
+        const color = oc ? oc.color : '#98a2b3';
+        const initials = opp.name.split(' ').filter(Boolean).map(w => w[0]).join('').slice(0, 3).toUpperCase();
+        return '<button class="grow" data-w="' + esc(m.id) + '" type="button" title="Assistir">' +
+          '<span class="g-meta"><span class="g-date">' + new Date(m.at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) + '</span>' +
+          '<span class="g-comp">' + esc(m.league ? m.league.name : m.cpu ? 'Teste (CPU)' : 'Amistoso') + '</span></span>' +
+          '<span class="g-opp"><span class="crest xs" style="background:' + esc(color) + ';color:' + textColor(color) + '">' + esc(initials) + '</span><span>' + esc(opp.name) + '</span><small>' + (home ? 'casa' : 'fora') + '</small></span>' +
+          '<span class="g-res ' + r + '" title="' + ({ w: 'Vitória', d: 'Empate', l: 'Derrota' }[r]) + '"><i></i>' + gf + ' - ' + ga + (m.pens ? ' <small>(pên.)</small>' : '') + '</span></button>';
+      }).join('') + '</div>'
+      : '<div class="empty">' + ico('ball') + '<span>Nenhuma partida ainda. Desafie um técnico online ou teste a escalação contra a CPU.</span><button class="btn primary sm" data-tab="clubs" type="button">Jogar agora</button></div>';
+
+    const stars = sq.slice().sort((a, b) => b.ovr - a.ovr).slice(0, 5);
+    $('hmStars').innerHTML = stars.length
+      ? '<div class="slist">' + stars.map(p => '<div class="srow">' + avatar(p) + '<div class="s-id"><a href="#" class="plink" data-player="' + esc(p.id) + '">' + esc(p.name) + '</a><small>' + (ROLE_NAME[p.role] || p.pos) + ' · ' + esc(p.pos) + '</small></div><b class="s-ovr">' + p.ovr + formTag(p) + '</b></div>').join('') + '</div>'
+      : '<div class="empty">' + ico('users') + '<span>Seu elenco está vazio. Contrate jogadores no mercado para montar o time.</span><button class="btn primary sm" data-tab="market" type="button">Ir ao mercado</button></div>';
+  }
+  $('hmGames').onclick = e => { const b = e.target.closest('[data-w]'); if (b) openMatch(b.dataset.w); };
 
   /* ---------- mercado ---------- */
   for (const id of ['mkSearch', 'mkPos', 'mkSort', 'mkFree', 'mkAfford']) $(id).addEventListener('input', () => { S.shown = 60; renderMarket(); });
@@ -450,7 +527,7 @@
     $('mkTable').innerHTML = head + list.map(p => {
       const mine = S.me.squad.includes(p.id) || S.me.coach === p.id;
       let act;
-      if (mine) act = '<span class="tag">No seu clube</span>';
+      if (mine) act = '<span class="tag ok">No seu clube</span>';
       else if (p.owner) act = '<span class="tag">' + esc(p.owner.name) + '</span>';
       else act = '<button class="btn primary sm" data-buy="' + esc(p.id) + '"' + (price(p) > S.me.budget ? ' disabled' : '') + ' type="button">Contratar</button>';
       return S.kind === 'coach'
@@ -486,6 +563,7 @@
   /* ---------- elenco ---------- */
   function renderSquad() {
     const sq = S.me.squad.map(player).filter(Boolean).sort((a, b) => ['GK', 'DEF', 'MID', 'FWD'].indexOf(a.role) - ['GK', 'DEF', 'MID', 'FWD'].indexOf(b.role) || b.ovr - a.ovr);
+    $('sqCount').textContent = sq.length + '/' + S.meta.squadMax;
     $('sqInfo').textContent = sq.length + ' jogadores · valor do elenco ' + money(sq.reduce((s, p) => s + p.value, 0)) + ' · compra com ágio de ' + Math.round((S.meta.buyPremium - 1) * 100) + '%, venda por ' + Math.round(S.meta.sellRatio * 100) + '% do valor de mercado.';
     $('sqTable').innerHTML = '<tr class="rh"><th>Pos</th><th>Jogador</th><th>Clube de origem</th><th class="num">Nota</th><th>Condição</th><th class="num">Valor</th><th class="num">Venda</th><th></th></tr>' +
       (sq.map(p => '<tr class="rc"><td class="c-pos"><span class="pos ' + p.role + '">' + p.pos + '</span></td><td class="c-name">' + avatar(p) + '<a href="#" class="plink" data-player="' + esc(p.id) + '">' + esc(p.name) + '</a></td><td class="c-club">' + esc(p.club) + '</td><td class="num ovr c-ovr">' + p.ovr + formTag(p) + '</td><td class="c-fit">' + fitBar(fitOf(p.id).cond) + (fitOf(p.id).rest ? ' <span class="tag rest">😴</span>' : '') + outTag(fitOf(p.id)) + '</td><td class="num c-val">' + money(p.value) + '</td><td class="num c-price">' + money(p.value * S.meta.sellRatio) + '</td><td class="c-act"><button class="btn danger sm" data-sell="' + esc(p.id) + '" type="button">Vender</button> <button class="btn sm" data-auc="' + esc(p.id) + '" type="button">Leiloar</button></td></tr>').join('') ||
@@ -536,11 +614,11 @@
       .filter(x => x[1]).map(x => '<div><span>' + x[0] + '</span><b>' + esc(String(x[1])) + '</b></div>').join('');
     const bar = ((f.delta + f.max) / (2 * f.max)) * 100;
     const T = S.meta.training;
-    const attr = s => '<div class="attr"><span>' + esc(s.label) + '</span><div class="abar"><i style="width:' + s.base + '%"></i>' + (s.gain ? '<i class="tr" style="width:' + Math.max(0, s.value - s.base) + '%"></i>' : '') + '</div><b>' + s.value + (s.gain ? '<small class="up" title="Ganho no treino"> +' + num1(s.gain) + '</small>' : '') + '</b></div>';
+    const attr = s => '<div class="attr"><span>' + esc(s.label) + '</span><div class="abar' + (s.value >= 75 ? '' : s.value >= 60 ? ' mid' : ' low') + '"><i style="width:' + s.base + '%"></i>' + (s.gain ? '<i class="tr" style="width:' + Math.max(0, s.value - s.base) + '%"></i>' : '') + '</div><b>' + s.value + (s.gain ? '<small class="up" title="Ganho no treino"> +' + num1(s.gain) + '</small>' : '') + '</b></div>';
     const stats = r.coach
       ? '<div class="pstats"><p class="muted">O técnico melhora ou piora as habilidades de todo o time: <b>' + (r.teamBonus >= 0 ? '+' : '') + r.teamBonus + '%</b> com a nota atual. Ele também muda o quanto os jogadores evoluem no treino.</p></div>'
       : '<div class="pstats">' + r.profile.stats.map(attr).join('') +
-        '<p class="muted small">' + (r.profile.estimated ? 'Características estimadas a partir da nota geral e da posição. ' : '') + (r.training.ovr ? 'Em verde, o que o jogador ganhou no treino (já soma <b>+' + num1(r.training.ovr) + '</b> na nota).' : 'Treino no Centro de Treinamento soma até +' + r.training.max + ' em cada característica.') + '</p></div>';
+        '<p class="muted small">' + (r.profile.estimated ? 'Características estimadas a partir da nota geral e da posição. ' : '') + (r.training.ovr ? 'Na parte listrada da barra, o que o jogador ganhou no treino (já soma <b>+' + num1(r.training.ovr) + '</b> na nota).' : 'Treino no Centro de Treinamento soma até +' + r.training.max + ' em cada característica.') + '</p></div>';
     const fz = r.fitness, mine = !!(r.owner && S.me && r.owner.id === S.me.id);
     const fitHtml = !fz ? '' : '<div class="pfit"><div class="row-between"><b>Condição física</b><b class="fitnum ' + fitClass(fz.cond) + '">' + fz.cond + '%' + (fz.rest ? ' · 😴 em descanso' : '') + '</b></div>' +
       '<span class="fitbar big ' + fitClass(fz.cond) + '"><i style="width:' + fz.cond + '%"></i></span>' +
@@ -1049,7 +1127,7 @@
   async function loadMatches() {
     try { S.matches = (await api('GET', '/api/matches')).matches; } catch (e) { return fail(e); }
     $('mtTable').innerHTML = '<tr class="rh"><th>Quando</th><th>Casa</th><th class="num">Placar</th><th>Visitante</th><th>Gols</th><th></th></tr>' +
-      (S.matches.map(m => '<tr class="rc"><td class="c-when">' + new Date(m.at).toLocaleString('pt-BR') + '</td><td class="c-home">' + esc(m.home.name) + '</td><td class="num c-score"><b>' + m.score[0] + ' - ' + m.score[1] + '</b>' + (m.pens ? ' <span class="tag">(pên. ' + m.pens[0] + '-' + m.pens[1] + ')</span>' : '') + '</td><td class="c-away">' + esc(m.away.name) + (m.cpu ? ' <span class="tag">(CPU)</span>' : '') + (m.league ? ' <span class="tag">· ' + esc(m.league.name) + ' — ' + esc(m.league.stage || '') + '</span>' : '') + '</td><td class="tag c-goals">' +
+      (S.matches.map(m => '<tr class="rc"><td class="c-when">' + new Date(m.at).toLocaleString('pt-BR') + '</td><td class="c-home">' + esc(m.home.name) + '</td><td class="num c-score"><b>' + m.score[0] + ' - ' + m.score[1] + '</b>' + (m.pens ? ' <span class="tag">(pên. ' + m.pens[0] + '-' + m.pens[1] + ')</span>' : '') + '</td><td class="c-away">' + esc(m.away.name) + (m.cpu ? ' <span class="tag">(CPU)</span>' : '') + (m.league ? ' <span class="tag">· ' + esc(m.league.name) + ' — ' + esc(m.league.stage || '') + '</span>' : '') + '</td><td class="c-goals">' +
         esc(m.goals.map(g => g.player + ' ' + g.min + "'").join(', ')) + '</td><td class="c-act"><button class="btn sm" data-w="' + m.id + '" type="button">Assistir</button></td></tr>').join('') || '<tr><td colspan="6">Nenhuma partida ainda.</td></tr>');
   }
   $('mtTable').onclick = e => { const b = e.target.closest('[data-w]'); if (b) openMatch(b.dataset.w); };
@@ -1337,6 +1415,7 @@
     play = null; held.clear(); $('vHelp').hidden = true; $('vPad').hidden = true;
     document.body.style.overflow = '';
     cancelAnimationFrame(raf);
+    if (S.tab === 'home') loadHome();
     if (S.tab === 'clubs') loadClubs();
     if (S.tab === 'matches') loadMatches();
     if (S.tab === 'facil') renderFacil(); // prêmio e bilheteria mudam o saldo
