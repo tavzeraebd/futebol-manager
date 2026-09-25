@@ -239,3 +239,13 @@ button { -webkit-user-select: none; user-select: none; }
   .pad-acts { flex-direction: column; flex-wrap: nowrap; align-items: flex-end; gap: 6px; }
   .pad-acts button { min-width: 92px; min-height: 48px; }
 }
+
+/* vestiário: moral do elenco em cartões (mesmo padrão das outras tabelas) */
+@media (max-width: 900px), (max-height: 500px) and (pointer: coarse) {
+  .cards.lk tr.rc { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "name eff" "moral moral" "sit sit"; row-gap: 6px; }
+  .cards.lk .c-name { white-space: normal !important; }
+  .cards.lk .c-moral { grid-area: moral; }
+  .cards.lk .c-eff { grid-area: eff; text-align: right; }
+  .cards.lk .c-eff::before { content: 'em campo '; color: var(--muted); font-size: 11px; font-weight: 400; }
+  .cards.lk .c-sit { grid-area: sit; }
+}

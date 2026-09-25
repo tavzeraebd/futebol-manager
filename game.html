@@ -44,6 +44,13 @@
     <symbol id="i-wallet" viewBox="0 0 24 24"><path d="M4 7.5A2.5 2.5 0 0 1 6.5 5H18v3"/><rect x="4" y="8" width="16" height="11" rx="2.5"/><path d="M16 13.5h.01"/></symbol>
     <symbol id="i-pulse" viewBox="0 0 24 24"><path d="M3 12h4l2.5-6 5 12 2.5-6h4"/></symbol>
     <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 9a6 6 0 0 1 12 0c0 6.5 2.5 8.5 2.5 8.5h-17S6 15.5 6 9"/><path d="M10.2 20.5a2 2 0 0 0 3.6 0"/></symbol>
+    <symbol id="i-chat" viewBox="0 0 24 24"><path d="M20.5 11.5a8 8 0 0 1-11.7 7.1L3.5 20l1.5-4.8a8 8 0 1 1 15.5-3.7z"/><path d="M8.5 11.5h.01M12.5 11.5h.01M16.5 11.5h.01"/></symbol>
+    <symbol id="i-shirt" viewBox="0 0 24 24"><path d="M8.5 3.5 3.5 6.2l1.9 4.1 2.1-.8v11h9v-11l2.1.8 1.9-4.1-5-2.7a3.5 3.5 0 0 1-7 0z"/></symbol>
+    <symbol id="i-calendar" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/></symbol>
+    <symbol id="i-target" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.5"/><path d="M12 12h.01"/></symbol>
+    <symbol id="i-news" viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="13.5" height="15" rx="1.5"/><path d="M17 8.5h3.5v9a2 2 0 0 1-2 2H7M7 8.5h6.5M7 12h6.5M7 15.5h4"/></symbol>
+    <symbol id="i-leaf" viewBox="0 0 24 24"><path d="M5 20c0-9 5.5-15 15-15 0 9.5-6 15-15 15z"/><path d="M5 20 13.5 11.5"/></symbol>
   </svg>
 
   <!-- Entrada -->
@@ -104,6 +111,7 @@
         <input id="gSearch" type="search" placeholder="Buscar jogador ou clube no mercado…" autocomplete="off" aria-label="Buscar jogador ou clube no mercado">
       </label>
       <div class="top-right">
+        <button class="icon-btn bell" id="btnInbox" data-tab="inbox" type="button" aria-label="Mensagens"><svg class="ico"><use href="#i-bell"/></svg><span class="badge" id="tbUnread" hidden></span></button>
         <div class="chip-kpi"><small>Saldo</small><b id="tbBudget"></b></div>
         <div class="chip-src"><b id="tbSource"></b><small>Fonte de dados</small></div>
         <button class="acct-btn" id="btnAcct" type="button" aria-label="Conta e opções" aria-expanded="false" aria-controls="acctPanel">
@@ -114,6 +122,7 @@
         <div class="acct-head"><b id="tbClub"></b><small id="tbManager"></small></div>
         <div class="acct-row"><small>Conta</small><b id="tbAccount"></b></div>
         <div id="linkGoogle"></div>
+        <button class="acct-item" id="btnPush" type="button">🔔 Notificações no celular</button>
         <button class="acct-item" id="btnPw" type="button">Senha</button>
         <button class="acct-item danger" id="btnLogout" type="button">Sair</button>
       </div>
@@ -127,9 +136,11 @@
       </div>
       <nav class="nav" id="tabs">
         <button class="nav-item" data-tab="home" type="button"><svg class="ico"><use href="#i-home"/></svg><span>Início</span></button>
+        <button class="nav-item" data-tab="inbox" type="button"><svg class="ico"><use href="#i-chat"/></svg><span>Mensagens</span><b class="nbadge" id="nvUnread" hidden></b></button>
         <div class="nav-label">Clube</div>
-        <button class="nav-item" data-tab="squad" type="button"><svg class="ico"><use href="#i-users"/></svg><span>Elenco</span></button>
+        <button class="nav-item" data-tab="squad" type="button"><svg class="ico"><use href="#i-users"/></svg><span>Elenco e base</span></button>
         <button class="nav-item" data-tab="lineup" type="button"><svg class="ico"><use href="#i-tactic"/></svg><span>Escalação e tática</span></button>
+        <button class="nav-item" data-tab="locker" type="button"><svg class="ico"><use href="#i-shirt"/></svg><span>Vestiário</span></button>
         <button class="nav-item" data-tab="train" type="button"><svg class="ico"><use href="#i-train"/></svg><span>Centro de Treino</span></button>
         <button class="nav-item" data-tab="facil" type="button"><svg class="ico"><use href="#i-stadium"/></svg><span>Estrutura</span></button>
         <div class="nav-label">Mercado</div>
@@ -183,6 +194,16 @@
 
         <div class="kpis4" id="hmKpis"></div>
 
+        <div id="hmLive"></div>
+
+        <div class="home-grid">
+          <div class="card next-card" id="hmNext"></div>
+          <div class="card">
+            <div class="card-head"><h2><svg class="ico hico"><use href="#i-target"/></svg>Missões do dia</h2><small class="muted" id="hmMissReset"></small></div>
+            <div id="hmMissions"><p class="muted">Carregando…</p></div>
+          </div>
+        </div>
+
         <div class="home-grid">
           <div class="card">
             <div class="card-head"><h2>Últimos jogos</h2><a href="#" class="link" data-tab="matches">Ver todos</a></div>
@@ -192,6 +213,76 @@
             <div class="card-head"><h2>Destaques do elenco</h2><a href="#" class="link" data-tab="squad">Ver elenco</a></div>
             <div id="hmStars"></div>
           </div>
+        </div>
+
+        <div class="home-grid">
+          <div class="card">
+            <div class="card-head"><h2><svg class="ico hico"><use href="#i-news"/></svg>Jornal da liga</h2><small class="muted">últimos 7 dias</small></div>
+            <div id="hmNews"></div>
+          </div>
+          <div class="card">
+            <div class="card-head"><h2>⭐ Seleção da rodada</h2><small class="muted">melhores notas da semana</small></div>
+            <div id="hmTeam"></div>
+            <div class="card-head trophy-head"><h2>🏆 Sala de troféus</h2></div>
+            <div id="hmTrophies"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Mensagens -->
+      <section id="tab-inbox" class="view" hidden>
+        <div class="page-head">
+          <div><h1>Mensagens</h1><p>Relatórios das partidas, conversas com os jogadores, análises do auxiliar, avisos da diretoria e mensagens de outros técnicos.</p></div>
+          <div class="head-side"><button class="btn" id="ibReadAll" type="button">Marcar tudo como lido</button></div>
+        </div>
+        <div class="card">
+          <div class="ib-filters" id="ibFilters">
+            <button data-k="" class="on" type="button">Tudo</button>
+            <button data-k="report" type="button">📋 Relatórios</button>
+            <button data-k="locker" type="button">👕 Vestiário</button>
+            <button data-k="aux" type="button">🧠 Auxiliar</button>
+            <button data-k="board" type="button">🏛️ Diretoria</button>
+            <button data-k="dm" type="button">💬 Técnicos</button>
+          </div>
+          <div id="ibList" class="ib-list"></div>
+          <div id="dmBox" class="dm-box" hidden>
+            <div class="dm-side">
+              <div class="dm-new"><select id="dmTo"></select><button class="btn primary sm" id="dmNew" type="button">Conversar</button></div>
+              <div id="dmThreads" class="dm-threads"></div>
+            </div>
+            <div class="dm-main" id="dmMain">
+              <div class="dm-head" id="dmHead"><span class="muted">Escolha uma conversa ou comece uma nova.</span></div>
+              <div class="dm-msgs" id="dmMsgs"></div>
+              <form id="dmForm" class="chat-form" hidden>
+                <input id="dmInput" maxlength="140" placeholder="Escreva para o técnico…" autocomplete="off">
+                <button class="btn primary sm" type="submit">Enviar</button>
+              </form>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Vestiário -->
+      <section id="tab-locker" class="view" hidden>
+        <div class="page-head"><div><h1>Vestiário</h1><p>O humor do grupo pesa em campo: a moral de cada jogador vale até ±3% nas habilidades. Converse com os jogadores pela caixa de mensagens e prepare o time para o próximo jogo.</p></div>
+          <div class="head-side"><button class="btn" data-tab="inbox" data-ibk="locker" type="button"><svg class="ico"><use href="#i-chat"/></svg>Mensagens dos jogadores</button></div></div>
+        <div class="home-grid">
+          <div class="card">
+            <h2>🎙️ Preleção do próximo jogo oficial</h2>
+            <p class="muted small">Vale para o próximo jogo oficial do clube (desafio ou liga, inclusive os automáticos). O efeito depende de o seu time ser favorito ou azarão pela nota média dos titulares.</p>
+            <div class="talk-grid" id="lkTalk"></div>
+          </div>
+          <div class="card">
+            <h2>⏸️ Palestra do intervalo (o auxiliar faz)</h2>
+            <p class="muted small">No intervalo, o auxiliar conversa com o time conforme o placar. Vale em todos os jogos, inclusive os automáticos.</p>
+            <div class="half-grid" id="lkHalf"></div>
+            <p class="muted small" id="lkHalfHelp"></p>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-head"><h2>Moral do elenco</h2><span class="muted small" id="lkSummary"></span></div>
+          <div class="table-wrap"><table class="tbl cards lk" id="lkTable"></table></div>
+          <p class="muted small">A moral sobe com vitórias, boas atuações e minutos em campo; cai com derrotas, banco seguido e promessas quebradas. Jogadores com moral muito baixa pedem para sair.</p>
         </div>
       </section>
 
@@ -232,6 +323,11 @@
           <p class="muted" id="sqInfo"></p>
           <div class="table-wrap"><table class="tbl cards sq" id="sqTable"></table></div>
         </div>
+        <div class="card" id="acCard">
+          <div class="card-head"><h2><svg class="ico hico"><use href="#i-leaf"/></svg>Categoria de base</h2><small class="muted" id="acNext"></small></div>
+          <p class="muted small">Toda semana a base revela novas promessas de 16 a 19 anos: baratas, com nota modesta e que evoluem rápido no Centro de Treinamento (até 21 anos o treino rende 30% a mais). Um CT melhor revela promessas melhores. Quem não for contratado na semana volta para a base.</p>
+          <div id="acList" class="ac-list"></div>
+        </div>
         <div class="card">
           <h2>Técnico</h2>
           <div id="sqCoach"></div>
@@ -253,19 +349,19 @@
           </div>
         </div>
         <div class="card tactics">
-          <h2>Tática e substituições</h2>
+          <h2>Tática, substituições e instruções para o auxiliar</h2>
           <label>Estilo de jogo <select id="tcStyle"></select></label>
           <p class="muted" id="tcHelp"></p>
           <div id="tcPlan"></div>
           <form id="tcSubForm" class="inline-form">
-            <span>Aos</span><input id="tcSubMin" type="number" min="1" max="120" value="60" required><span>min: sai</span><select id="tcOut"></select><span>e entra</span><select id="tcIn"></select>
+            <span>A partir dos</span><input id="tcSubMin" type="number" min="1" max="120" value="60" required><span>min,</span><select id="tcSubWhen" class="when"></select><span>: sai</span><select id="tcOut"></select><span>e entra</span><select id="tcIn"></select>
             <button class="btn sm" type="submit">Adicionar troca</button>
           </form>
           <form id="tcTacForm" class="inline-form">
-            <span>Aos</span><input id="tcTacMin" type="number" min="1" max="120" value="70" required><span>min: mudar para</span><select id="tcTacStyle"></select>
+            <span>A partir dos</span><input id="tcTacMin" type="number" min="1" max="120" value="70" required><span>min,</span><select id="tcTacWhen" class="when"></select><span>: mudar para</span><select id="tcTacStyle"></select>
             <button class="btn sm" type="submit">Adicionar mudança</button>
           </form>
-          <p class="muted">A troca ou mudança acontece na primeira bola parada depois do minuto combinado (o intervalo também vale). Até 5 trocas e 3 mudanças de tática.</p>
+          <p class="muted">A troca ou mudança acontece na primeira bola parada depois do minuto combinado (o intervalo também vale). Com uma condição ("se estiver perdendo"...), o auxiliar espera o placar ficar assim; se não ficar, a instrução não acontece. Vale também nos jogos automáticos, quando você não está assistindo. Até 5 trocas e 3 mudanças de tática.</p>
         </div>
       </section>
 
@@ -326,7 +422,7 @@
       <!-- Ligas e copas -->
       <section id="tab-leagues" class="view" hidden>
         <div class="page-head">
-          <div><h1>Ligas e copas</h1><p>Crie uma sala e passe o código para os amigos entrarem. O dono da sala inicia a competição.</p></div>
+          <div><h1>Ligas e copas</h1><p>Crie uma sala e passe o código para os amigos entrarem. O dono da sala inicia a competição e pode marcar os jogos para acontecerem sozinhos em dias e horários fixos.</p></div>
           <div class="head-side"><button class="btn primary" id="lgNew" type="button"><svg class="ico"><use href="#i-plus"/></svg>Criar liga ou copa</button></div>
         </div>
         <div class="card">
@@ -408,8 +504,10 @@
         <button class="btn primary" id="vPlay" type="button">Pausar</button>
         <div class="seg" id="vSpeed"><button data-v="1" class="on" type="button">1x</button><button data-v="2" type="button">2x</button><button data-v="4" type="button">4x</button><button data-v="8" type="button">8x</button></div>
         <button class="btn" id="vSkip" type="button">Pular para o fim</button>
+        <button class="btn" id="vReport" type="button" hidden>📋 Relatório</button>
         <button class="btn" id="vClose" type="button">Fechar</button>
         <span class="tag" id="vSync" hidden></span>
+        <span class="tag live-tag" id="vHl" hidden></span>
       </div>
       <div class="pens-line" id="vPens" hidden></div>
       <p class="result" id="vResult"></p>
@@ -465,9 +563,29 @@
       <label id="lgRoundsLbl">Turnos
         <select id="lgRounds"><option value="1">Turno único (todos se enfrentam 1 vez)</option><option value="2">Ida e volta</option></select>
       </label>
+      <label class="chk sched-toggle"><input type="checkbox" id="lgAuto" checked> Jogos automáticos em horário marcado</label>
+      <div class="sched" id="lgSched">
+        <div class="days" id="lgDays"></div>
+        <label>Horário (de Brasília)<input id="lgTime" type="time" value="20:00" required></label>
+        <p class="muted small">Cada rodada acontece sozinha no horário, sem precisar desafiar: quem estiver online assiste ao vivo. Time sem 11 jogadores (com goleiro) perde por W.O.</p>
+      </div>
       <p class="muted" id="lgHint">Liga: até 12 clubes. Copa: até 16 clubes. Campeão ganha € 30 M e o vice € 10 M.</p>
       <p class="error" id="lgFormError"></p>
       <div class="controls"><button class="btn primary" type="submit">Criar sala</button><button class="btn" id="lgCancel" type="button">Cancelar</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="schDialog" class="dlg">
+    <form id="schForm" class="auth-card">
+      <h2>Agenda dos jogos</h2>
+      <label class="chk sched-toggle"><input type="checkbox" id="schAuto" checked> Jogos automáticos em horário marcado</label>
+      <div class="sched" id="schSched">
+        <div class="days" id="schDays"></div>
+        <label>Horário (de Brasília)<input id="schTime" type="time" value="20:00" required></label>
+      </div>
+      <p class="muted small">Os jogos que ainda não aconteceram ganham horários novos (o primeiro pelo menos 10 minutos depois de salvar).</p>
+      <p class="error" id="schError"></p>
+      <div class="controls"><button class="btn primary" type="submit">Salvar agenda</button><button class="btn" id="schCancel" type="button">Cancelar</button></div>
     </form>
   </dialog>
 

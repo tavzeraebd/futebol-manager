@@ -17,7 +17,8 @@ const roundStep = v => Math.ceil(v / 1e5) * 1e5;
 const nextMin = a => (a.bid ? a.bid.amount + Math.max(MIN_STEP, roundStep(a.bid.amount * 0.05)) : a.startPrice);
 
 function createExchange(ctx) {
-  const { db, catalog, R, save, push, pushAll, now = Date.now, beforeMove = () => {} } = ctx; // beforeMove(id): antes de o item mudar de clube
+  // beforeMove(id): antes de o item mudar de clube; afterGive(club, id): jogador chegou ao clube (apresentação no vestiário)
+  const { db, catalog, R, save, push, pushAll, now = Date.now, beforeMove = () => {}, afterGive = () => {} } = ctx;
   const auctions = new Map();  // id -> leilão (em memória: leilão em andamento não sobrevive a reinício)
   const finished = [];          // últimos encerrados
   if (!db.trades) db.trades = [];
@@ -45,7 +46,7 @@ function createExchange(ctx) {
     if (club.coach === id) club.coach = null;
     else { club.squad = club.squad.filter(x => x !== id); club.lineup = club.lineup.map(x => (x === id ? null : x)); }
   }
-  function give(club, id) { if (isCoach(id)) club.coach = id; else club.squad.push(id); }
+  function give(club, id) { if (isCoach(id)) club.coach = id; else { club.squad.push(id); afterGive(club, id); } }
 
   /* ---------- leilão ---------- */
   function auctionView(a) {

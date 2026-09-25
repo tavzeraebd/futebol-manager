@@ -20,6 +20,20 @@ Para testar com 2 jogadores, abra a URL em duas abas anônimas ou em dois navega
   sincronizados). O dono da sala pode "Simular" um jogo se o adversário estiver ausente.
 - Copa: empate vai para prorrogação (2x15 min) e depois pênaltis. Com número ímpar de clubes, alguns folgam na 1ª fase.
 - Campeão ganha € 30 M e o vice € 10 M. A liga tem tabela e artilheiros.
+- **Jogos automáticos em horário marcado:** ao criar a sala (ou depois, em "Editar agenda", só o dono), escolha os dias da semana e o horário
+  (de Brasília). Cada rodada ganha um horário e o jogo acontece sozinho, sem ninguém desafiar. 3 h antes, o **auxiliar técnico** manda a análise
+  do adversário (tática, destaque, desfalques, quem do seu time está cansado); 15 min antes, aviso na tela e no celular. No horário, quem estiver
+  online assiste **ao vivo**, todos no mesmo lance, com o chat aberto para os membros da liga (mexer em pausa/velocidade sai da transmissão só na
+  sua tela). Placar, tabela, campanha, jornal e relatório só aparecem no apito final. Vaga vazia na escalação é completada pelo auxiliar com o
+  melhor disponível; clube sem 11 jogadores com goleiro perde por **W.O.** (3 x 0; se os dois faltarem, derrota para os dois).
+  Um desafio ("Jogar antes") continua valendo antes do horário. Se o servidor estiver dormindo no horário, joga os atrasados ao acordar.
+- **Bolão:** palpite o placar de cada jogo até o horário dele (botão 🎯 na aba Jogos): placar exato = 3 pontos e € 3 M; vencedor/empate = 1 ponto
+  e € 1 M. A aba Bolão tem o ranking da sala.
+- **Metas da diretoria:** ao começar, cada clube recebe uma meta conforme o valor do elenco entre os participantes (o mais caro tem de ser
+  campeão; os outros, ficar entre os primeiros, na metade de cima ou não terminar em último; na copa, chegar à final ou vencer um jogo).
+  Cumprida no fim: bônus de € 15 M.
+- **Fim da competição:** artilheiro e craque (melhor média de notas, com pelo menos metade dos jogos) rendem € 5 M ao clube e vão para a
+  **sala de troféus** junto com campeão e vice (Início e ficha do clube). A sala de troféus sobrevive ao reset de temporada.
 
 ## Chat, reações e narração
 - Partidas entre dois jogadores têm chat, reações com emoji (flutuam sobre o campo para os dois) e provocações prontas.
@@ -44,6 +58,42 @@ Para testar com 2 jogadores, abra a URL em duas abas anônimas ou em dois navega
 ## Tática e substituições (aba "Escalação e tática")
 - Estilos: Equilibrado, Ofensivo, Retranca, Contra-ataque e Pressão alta. Além disso, planeje até 5 trocas e 3 mudanças de tática
   em minutos combinados; elas acontecem na primeira bola parada depois do minuto (ou no intervalo) e são narradas.
+- **Instruções para o auxiliar** (motor versão 8): cada troca ou mudança pode ter uma condição do placar ("se estiver perdendo", "empatando",
+  "ganhando" ou "sem estar ganhando"). O auxiliar espera o minuto e o placar ficarem assim; se não ficarem, a instrução não acontece. Vale
+  nos jogos automáticos, quando o técnico nem está assistindo.
+
+## Vestiário, mensagens e relatório da partida
+- **Mensagens** (sino no topo e item do menu, com o número de não lidas): relatórios das partidas, vestiário, auxiliar técnico, diretoria
+  (missões, metas, bolão, prêmios) e **conversas entre técnicos** (também pelo botão na ficha de um clube). Fica na tabela `messages`.
+- **Relatório da partida:** depois de cada jogo oficial, os dois clubes recebem placar, gols (de pênalti, falta, cabeça), números do jogo (posse,
+  finalizações, passes certos, escanteios, faltas, cartões), **nota de 0 a 10** de quem atuou, craque da partida, quem atuou bem e quem ficou
+  abaixo, e **quem precisa treinar o quê** com o motivo tirado dos números (ex.: "chutou 5 vezes e acertou 1 no gol" → Finalização; "errou 4 de 12
+  passes" → Passe; "terminou esgotado" → Resistência), com botão que abre o Centro de Treinamento já com o jogador e o foco escolhidos.
+  Ao entrar no jogo, o relatório que chegou com você fora abre sozinho (vários viram um resumo "Enquanto você esteve fora"). **Ver os gols**
+  pula direto para alguns segundos antes de cada gol.
+- **Moral** (aba Vestiário, 0 a 100): sobe com vitórias, boas notas e minutos em campo; cai com derrotas, banco seguido e promessas quebradas.
+  Vale até ±3% nas habilidades (montado pelo servidor na definição do time; o motor não muda).
+- **Os jogadores falam com o técnico:** reforço se apresenta, reserva há 3 jogos pede chance, quem foi muito bem agradece, quem foi mal se
+  explica, lesionado avisa quanto tempo fica fora, esgotado pede descanso, insatisfeito pede para sair. Cada mensagem tem 2 ou 3 respostas
+  (elogiar, cobrar, prometer vaga, mandar treinar, colocar em descanso...) que mexem na moral; **prometer vaga** vira compromisso: se ele não for
+  titular nos 2 jogos oficiais seguintes, a moral despenca.
+- **Preleção** (Vestiário, vale para o próximo jogo oficial): Incentivar (+2% sempre), Cobrar (+4% se o time for favorito, −1% se azarão) ou
+  Tranquilizar (+4% se azarão, +1% se favorito), pela nota média dos titulares.
+- **Palestra do intervalo** (Vestiário): o que o auxiliar diz no intervalo conforme o placar (Cobrar, Tranquilizar ou Incentivar; efeito no 2º tempo).
+
+## Início, missões, base e notificações
+- **Início:** jogos ao vivo agora, próximo jogo marcado (contagem, preleção, bolão, escalação), missões do dia, últimos jogos, destaques do
+  elenco, **jornal da liga** (manchetes automáticas: goleada, virada, hat-trick, zebra, sequências), **seleção da rodada** (melhores notas dos
+  últimos 7 dias) e sala de troféus.
+- **Missões do dia:** 3 por dia (duas de partida oficial e uma que dá para cumprir sem jogar, como treinar, responder o vestiário, palpitar ou
+  mandar mensagem a outro técnico), de € 1 M a € 4 M, pagas na hora. Renovam à meia-noite de Brasília.
+- **Categoria de base** (aba Elenco): toda segunda-feira 3 promessas de 16 a 19 anos, baratas e com potencial; um CT melhor revela promessas
+  melhores. Contratada, vira jogadora do catálogo (tag "Base do clube").
+- **Clássico:** com 3 ou mais jogos oficiais entre dois clubes, o confronto vira clássico (bilheteria em dobro). A ficha do clube mostra o
+  retrospecto contra o seu.
+- **Notificações no celular** (menu da conta): jogo marcado começando, resultado com relatório, mensagem de técnico, proposta de troca, leilão.
+  No iPhone só com o app instalado na Tela de Início. Chaves VAPID: `VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY` ou geradas uma vez e guardadas na
+  tabela `app_kv`; aparelhos inscritos em `push_subs`.
 
 ## Jogar você mesmo (aba "Jogar")
 - "Jogar (eu controlo)": contra a CPU ou contra o time de um amigo; você controla o jogador mais próximo da bola.
@@ -85,7 +135,9 @@ O servidor valida a assinatura do token do Google (sem guardar senha); você pod
 ## Banco de dados (Supabase)
 Tudo o que precisa persistir (clubes, elencos, partidas, ligas/copas, trocas, jogadores importados) fica no projeto Supabase
 `futebol-manager`, nas tabelas `clubs`, `club_players`, `matches`, `leagues`, `league_members`, `league_fixtures`,
-`trades`, `imported_players`, `player_form`, `player_stats` e `player_training` (RLS ligado, sem policies: só o servidor acessa).
+`trades`, `imported_players`, `player_form`, `player_stats`, `player_training`, `messages`, `push_subs` e `app_kv` (RLS ligado, sem policies: só o
+servidor acessa). Colunas e tabelas novas ficam em `scripts/sql/` (aplicar antes de publicar o servidor que usa). `scripts/sql/*-despertador.sql`
+agenda no próprio Supabase (pg_cron + pg_net) uma chamada a `/api/wake` perto de cada jogo marcado, para o plano grátis do Render estar acordado no horário.
 1. `npm install`
 2. Em Project Settings > API Keys do Supabase, copie a chave **service_role** e ponha em `config.local.json`
    (`supabaseServiceRoleKey`, veja `config.example.json`) ou na variável `SUPABASE_SERVICE_ROLE_KEY`. Nunca a exponha no navegador.
@@ -153,6 +205,8 @@ time; as partidas antigas (v6) são reproduzidas exatamente como antes (conferid
 - **Chance de gol calibrada** (`V7` em `js/engine.js`): curva de xG 0,26 (teto 0,36).
 - **Estatísticas ao vivo** na tela da partida: posse, finalizações, passes certos (%), escanteios, faltas e cartões.
 - Resultado nas simulações (300 partidas, catálogo base): ver a tabela no commit que introduziu a versão 7.
+- **Versão 8:** instruções condicionais do plano de jogo (`when`) e palestra do intervalo (`type: 'talk'`, `TALK` em `js/engine.js`). Nenhuma das
+  duas usa números aleatórios; partidas v6 e v7 continuam idênticas (conferido lance a lance em 40 de cada).
 
 ## Estrutura do clube (aba "Estrutura")
 Três instalações compradas com o saldo, do nível 1 ao 5. Subir de nível custa € 15 M, 30 M, 60 M e 100 M (€ 205 M para levar uma instalação ao máximo).
@@ -188,7 +242,8 @@ as estatísticas ficam registradas em cada clube por onde passou. Nas ligas e co
 
 ## Recomeçar a temporada
 `node scripts/reset-season.js --yes` (com o servidor parado ou reiniciado logo depois) devolve todos os clubes ao saldo inicial, sem
-elenco, técnico, pontos, partidas, ligas, trocas, forma nem treino/condição física. As contas são mantidas (cada técnico entra com o mesmo nome e senha e refaz o time do zero).
+elenco, técnico, pontos, partidas, ligas, trocas, forma, treino/condição física, vestiário, missões nem mensagens. As contas e a sala de troféus são mantidas
+(cada técnico entra com o mesmo nome e senha e refaz o time do zero).
 Faz backup em `data/backup-temporada-<data>-<hora>.json` (nunca sobrescreve um anterior). `--drop="Clube A,Clube B"` remove clubes inteiros (ex.: os de teste).
 Como o servidor guarda tudo em memória, reinicie o serviço no Render logo depois (um novo deploy já reinicia).
 
@@ -214,5 +269,6 @@ e passam a aparecer no mercado de todos os clubes.
   SOFASCORE_BASE (proxy/licença próprios) e SOFASCORE_HEADERS (JSON); aí ele substitui o Wikidata.
 
 ## Estrutura
-server/ (API, regras, catálogo) · js/engine.js (partida) · js/render.js (campo) · js/game.js (cliente) · game.html
+server/ (API, regras, catálogo; locker.js vestiário, report.js relatório, schedule.js agenda, missions.js missões e metas, academy.js base,
+news.js jornal e retrospecto, inbox.js mensagens, push.js notificações) · js/engine.js (partida) · js/render.js (campo) · js/game.js (cliente) · game.html
 `index.html` é o widget de demonstração original.

@@ -119,6 +119,20 @@
    * - torcida: o mandante recebe def.crowd (fração) a mais nas habilidades.
    */
   const V7 = { xg: 0.26, xgCap: 0.36, xgMax: 0.8, foul: 0.2, pressDist: 2.2, pressHold: 0.35, blockCorner: 0.55, headerRange: 16, fkRange: 30, fkShoot: 0.6, wall: 9.15, crowdMax: 0.15 };
+
+  /*
+   * Regras da versão 8 (só quando as duas definições de time trazem v >= 8; partidas antigas continuam iguais):
+   * - instruções condicionais do plano de jogo: `when` = 'losing' | 'drawing' | 'winning' | 'notwinning'. A troca ou mudança de
+   *   tática espera o minuto combinado E a situação do placar (na primeira bola parada em que as duas coisas valem);
+   * - palestra do intervalo (plano `type: 'talk'`, só no intervalo do 1º tempo, uma por time): muda as habilidades do time no
+   *   2º tempo conforme o estilo e o placar (TALK). Nenhuma das duas usa números aleatórios.
+   */
+  const TALK = {
+    push: { losing: 0.04, drawing: 0.02, winning: -0.01 },    // cobrar
+    calm: { losing: 0, drawing: 0.01, winning: 0.03 },         // tranquilizar
+    motivate: { losing: 0.02, drawing: 0.02, winning: 0.02 }   // incentivar
+  };
+  const TALK_NAMES = { push: 'cobra o time', calm: 'pede calma ao time', motivate: 'incentiva o time' };
   const OFF = { x: -40, y: -40 }; // onde fica quem foi expulso (fora do campo e longe de qualquer lance)
 
   class Player {
@@ -150,6 +164,7 @@
       this.maxSpeed = this.speed0;
       this.skill0 = Object.assign({ pass: 1, shot: 1, def: 1, dribble: 1 }, d.skill);
       if (this.team.boost) for (const k of Object.keys(this.skill0)) this.skill0[k] *= 1 + this.team.boost; // torcida do mandante (v7)
+      if (this.team.talk) for (const k of Object.keys(this.skill0)) this.skill0[k] *= 1 + this.team.talk; // palestra do intervalo (v8)
       this.skill = Object.assign({}, this.skill0);
       this.energy = this.e0 = d.fit != null ? d.fit : 1;
       this.sta = d.sta || 1;
@@ -246,6 +261,7 @@
         tactic: TACTICS[def.tactic] ? def.tactic : 'balanced', plan: (def.plan || []).slice().sort((a, b) => a.min - b.min), planIdx: 0,
         bench: (def.bench || []).slice(), benchUsed: new Set(), subs: 0,
         boost: this.rules >= 7 ? clamp(+def.crowd || 0, 0, V7.crowdMax) : 0,
+        planDone: new Set(), talk: 0, talked: false, // v8: instruções já cumpridas (índices do plano) e palestra do intervalo
         stats: { shots: 0, onTarget: 0, passes: 0, passOk: 0, corners: 0, fouls: 0, yellow: 0, red: 0, poss: 0 }
       };
       t.tac = TACTICS[t.tactic];
@@ -347,25 +363,63 @@
     _applyPlans() {
       for (const t of this.teams) {
         if (this.rules >= 6) for (const p of t.players) if (p.injured && !p.off && !p.hurt) this._injurySub(t, p);
-        while (t.planIdx < t.plan.length && this.clock / 60 >= t.plan[t.planIdx].min - 1) {
-          const e = t.plan[t.planIdx++];
-          if (e.type === 'tactic' && TACTICS[e.style]) {
-            t.tactic = e.style; t.tac = TACTICS[e.style];
-            this._emit({ type: 'tactic', team: t.key, style: e.style, text: t.name + ' muda para ' + TACTIC_NAMES[e.style] });
-          } else if (e.type === 'sub' && e.out >= 1 && e.out < t.players.length && e.in) {
-            const p = t.players[e.out], outP = { name: p.name, short: p.short };
-            if (this.rules >= 6) { // expulso não é substituído; quem já entrou por lesão não entra de novo; no máximo 5 trocas
-              if (p.off || t.subs >= MAX_SUBS || t.benchUsed.has(e.in.name)) continue;
-              t.subs++; t.benchUsed.add(e.in.name);
-            }
-            this.used.push({ team: t.key, name: p.name, start: p.e0, end: +p.energy.toFixed(3) });
-            p.name = e.in.name; p.short = e.in.short || e.in.name.split(' ').slice(-1)[0]; p.num = e.in.num;
-            p._setup(e.in);
-            if (this.fatigue) p._tire();
-            p.yellow = 0;
-            this._emit({ type: 'sub', team: t.key, player: p, out: outP, text: 'Substituição no ' + t.name + ': sai ' + outP.name + ', entra ' + p.name });
-          }
+        if (this.rules >= 8) { this._applyPlansV8(t); continue; }
+        while (t.planIdx < t.plan.length && this.clock / 60 >= t.plan[t.planIdx].min - 1) this._planEntry(t, t.plan[t.planIdx++]);
+      }
+    }
+
+    /** v8: cada instrução espera o minuto e a situação do placar (`when`); a palestra só vale no intervalo do 1º tempo. */
+    _applyPlansV8(t) {
+      const sit = this._situation(t), atBreak = this.state === 'halftime' && this.half === 1;
+      for (let i = 0; i < t.plan.length; i++) {
+        const e = t.plan[i];
+        if (t.planDone.has(i) || this.clock / 60 < e.min - 1) continue;
+        if (e.type === 'talk') {
+          if (!atBreak) { if (this.half > 1) t.planDone.add(i); continue; } // passou o intervalo: não vale mais
+          t.planDone.add(i);
+          if (!t.talked && (!e.when || e.when === sit)) this._talk(t, e.style, sit);
+          continue;
         }
+        if (e.when && !(e.when === sit || (e.when === 'notwinning' && sit !== 'winning'))) continue;
+        t.planDone.add(i);
+        this._planEntry(t, e);
+      }
+    }
+
+    _situation(t) { return t.score > t.opp.score ? 'winning' : t.score < t.opp.score ? 'losing' : 'drawing'; }
+
+    /** Palestra do intervalo (v8): a fração TALK[estilo][placar] entra nas habilidades de quem está em campo e de quem entrar depois. */
+    _talk(t, style, sit) {
+      const k = TALK[style] ? TALK[style][sit] : 0;
+      t.talked = true;
+      if (k) {
+        t.talk = k;
+        for (const p of t.players) {
+          if (p.off) continue;
+          for (const s of Object.keys(p.skill0)) p.skill0[s] *= 1 + k;
+          if (this.fatigue) p._tire(); else Object.assign(p.skill, p.skill0);
+        }
+      }
+      this._emit({ type: 'talk', team: t.key, style, effect: k, text: 'No vestiário, o técnico do ' + t.name + ' ' + (TALK_NAMES[style] || 'conversa com o time') });
+    }
+
+    /** Uma troca ou mudança de tática do plano de jogo. */
+    _planEntry(t, e) {
+      if (e.type === 'tactic' && TACTICS[e.style]) {
+        t.tactic = e.style; t.tac = TACTICS[e.style];
+        this._emit({ type: 'tactic', team: t.key, style: e.style, text: t.name + ' muda para ' + TACTIC_NAMES[e.style] });
+      } else if (e.type === 'sub' && e.out >= 1 && e.out < t.players.length && e.in) {
+        const p = t.players[e.out], outP = { name: p.name, short: p.short };
+        if (this.rules >= 6) { // expulso não é substituído; quem já entrou por lesão não entra de novo; no máximo 5 trocas
+          if (p.off || t.subs >= MAX_SUBS || t.benchUsed.has(e.in.name)) return;
+          t.subs++; t.benchUsed.add(e.in.name);
+        }
+        this.used.push({ team: t.key, name: p.name, start: p.e0, end: +p.energy.toFixed(3) });
+        p.name = e.in.name; p.short = e.in.short || e.in.name.split(' ').slice(-1)[0]; p.num = e.in.num;
+        p._setup(e.in);
+        if (this.fatigue) p._tire();
+        p.yellow = 0;
+        this._emit({ type: 'sub', team: t.key, player: p, out: outP, text: 'Substituição no ' + t.name + ': sai ' + outP.name + ', entra ' + p.name });
       }
     }
 
@@ -1181,6 +1235,6 @@
     }
   }
 
-  g.FootballEngine = { VERSION: 7, TACTICS: TACTIC_NAMES, Match, Player, PITCH: { L, W, GOAL_W, GY0, GY1 } };
+  g.FootballEngine = { VERSION: 8, TACTICS: TACTIC_NAMES, TALK, Match, Player, PITCH: { L, W, GOAL_W, GY0, GY1 } };
   if (typeof module !== 'undefined') module.exports = g.FootballEngine;
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -155,6 +155,11 @@
         case 'tactic':
           out.push({ min: ev.min, type: ev.type, text: ev.text + '.', voice: true, big: false, prio: 2 });
           break;
+        case 'talk': { // palestra do intervalo (v8)
+          const eff = ev.effect > 0 ? ' O time volta mais ligado para o segundo tempo.' : ev.effect < 0 ? ' A bronca parece ter deixado o time nervoso.' : '';
+          out.push({ min: ev.min, type: ev.type, text: ev.text + '.' + eff, vtext: ev.text, voice: true, big: false, prio: 2 });
+          break;
+        }
         case 'corner':
           out.push({ min: ev.min, type: ev.type, text: 'Escanteio para o ' + this._team(ev.team) + '.', voice: false, big: false, prio: 0 });
           break;

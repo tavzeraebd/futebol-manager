@@ -29,7 +29,9 @@ function shuffle(arr, rnd) {
   return a;
 }
 
-const fixture = (round, stage, home, away) => ({ id: crypto.randomUUID(), round, stage, home, away, matchId: null, score: null, pens: null, winner: null, goals: [] });
+// at: horário marcado (ms, ligas com agenda); extra: { bets: {clubeId: [casa, fora]} (bolão), wo: 'home'|'away'|'both' (quem não
+// compareceu), pre/remind: avisos do auxiliar e do "começa em 15 min" já enviados }
+const fixture = (round, stage, home, away) => ({ id: crypto.randomUUID(), round, stage, home, away, matchId: null, score: null, pens: null, winner: null, goals: [], at: null, extra: {} });
 
 /** Todos contra todos (método do círculo). `double` = ida e volta. */
 function roundRobin(ids, double) {
@@ -97,6 +99,7 @@ function recordResult(league, fixtureId, res) {
   f.score = res.score;
   f.pens = res.pens || null;
   f.goals = (res.goals || []).map(g => ({ player: g.player, clubId: g.side === 'home' ? f.home : f.away, og: !!g.og, assist: g.assist || null }));
+  if (res.wo) f.extra = Object.assign({}, f.extra, { wo: res.wo }); // W.O.: 3 x 0 para quem compareceu (ou derrota dos dois)
   f.winner = winnerOf(f);
   if (league.format === 'cup' && !f.winner) f.winner = f.home; // segurança: mata-mata sempre tem vencedor
   return advance(league);
@@ -137,6 +140,7 @@ function standings(league) {
     if (!played(f)) continue;
     const h = rows.get(f.home), a = rows.get(f.away);
     if (!h || !a) continue;
+    if (f.extra && f.extra.wo === 'both') { h.j++; a.j++; h.d++; a.d++; continue; } // nenhum dos dois compareceu: derrota para os dois
     const [gh, ga] = f.score;
     h.j++; a.j++; h.gp += gh; h.gc += ga; a.gp += ga; a.gc += gh;
     if (gh > ga) { h.v++; h.pts += 3; a.d++; } else if (gh < ga) { a.v++; a.pts += 3; h.d++; } else { h.e++; a.e++; h.pts++; a.pts++; }

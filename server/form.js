@@ -15,11 +15,11 @@ const valueFactor = delta => Math.pow(VALUE_PER_POINT, delta);
 
 /** Conta o que cada jogador fez, a partir dos eventos do motor. Chave: "home|Nome". */
 class Tally {
-  constructor() { this.players = new Map(); this.subsIn = new Set(); this.goals = { home: 0, away: 0 }; this.last = { home: null, away: null }; this.lastAssist = null; }
+  constructor() { this.players = new Map(); this.subsIn = new Set(); this.goals = { home: 0, away: 0 }; this.last = { home: null, away: null }; this.lastAssist = null; this.lastShot = null; this.lastKind = null; }
   get(side, name) {
     const k = side + '|' + name;
     let e = this.players.get(k);
-    if (!e) this.players.set(k, e = { side, name, shots: 0, onTarget: 0, goals: 0, og: 0, assists: 0, saves: 0, steals: 0, intercepts: 0, passes: 0, risky: 0, fouls: 0, yellow: 0, red: 0, injured: false });
+    if (!e) this.players.set(k, e = { side, name, shots: 0, onTarget: 0, goals: 0, og: 0, assists: 0, saves: 0, steals: 0, intercepts: 0, passes: 0, risky: 0, passLost: 0, lost: 0, fouls: 0, yellow: 0, red: 0, injured: false });
     return e;
   }
   add(ev) {
@@ -29,9 +29,12 @@ class Tally {
     if (ev.type === 'goal') this.goals[ev.team]++;
     const e = this.get(ev.type === 'goal' && ev.og ? other : ev.team, p.name); // gol contra: o jogador é do time que sofreu
     switch (ev.type) {
-      case 'shot': e.shots++; if (ev.outcome === 'goal' || ev.outcome === 'save') e.onTarget++; break;
+      case 'shot': e.shots++; if (ev.outcome === 'goal' || ev.outcome === 'save') e.onTarget++; this.lastShot = { team: ev.team, name: p.name, kind: ev.kind || null }; break;
       case 'goal': {
         this.lastAssist = null;
+        const ls = this.lastShot; // de pênalti, de falta ou de cabeça (motor v7)
+        this.lastKind = !ev.og && ls && ls.team === ev.team && ls.name === p.name ? ls.kind : null;
+        this.lastShot = null;
         if (ev.og) { e.og++; this.last.home = this.last.away = null; break; }
         e.goals++;
         // assistência: o último passe do time, para quem fez o gol, pouco antes (a posse não pode ter mudado de time no meio)
@@ -41,8 +44,8 @@ class Tally {
         break;
       }
       case 'save': e.saves++; break;
-      case 'steal': e.steals++; this.last[other] = null; break; // quem perdeu a bola não constrói mais jogada
-      case 'intercept': e.intercepts++; this.last[other] = null; break;
+      case 'steal': e.steals++; this.last[other] = null; if (ev.from) this.get(other, ev.from.name).lost++; break; // quem perdeu a bola não constrói mais jogada
+      case 'intercept': e.intercepts++; this.last[other] = null; if (ev.from) this.get(other, ev.from.name).passLost++; break;
       case 'pass': e.passes++; if (ev.kind === 'cross' || ev.kind === 'long' || ev.kind === 'through') e.risky++; this.last[ev.team] = { from: p.name, to: ev.to && ev.to.name, t: ev.t }; this.last[other] = null; break;
       case 'foul': e.fouls++; this.last.home = this.last.away = null; break; // bola parada: a jogada anterior não dá assistência (pênalti, falta direta)
       case 'yellow': e.yellow++; break;
@@ -80,4 +83,7 @@ function rate(role, e, r, conceded) {
 /** Técnico: resultado do time e saldo de gols. */
 const rateCoach = (r, goalDiff) => +clamp(r * 0.6 + cap(goalDiff * 0.1, 0.3), -1, 1).toFixed(2);
 
-module.exports = { Tally, rate, rateCoach, valueFactor, MAX_FORM, VALUE_PER_POINT };
+/** Nota da partida (3 a 10, como nos jornais) a partir dos pontos de rate(): 0 pontos = 6,2. */
+const matchRating = pts => +clamp(6.2 + pts * 1.35, 3, 10).toFixed(1);
+
+module.exports = { Tally, rate, rateCoach, matchRating, valueFactor, MAX_FORM, VALUE_PER_POINT };

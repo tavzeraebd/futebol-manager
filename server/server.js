@@ -15,12 +15,22 @@ const TR = require('./training');
 const FAC = require('./facilities');
 const LG = require('./leagues');
 const CH = require('./chat');
+const LK = require('./locker');
+const RP = require('./report');
+const MS = require('./missions');
+const AC = require('./academy');
+const NW = require('./news');
+const SC = require('./schedule');
 const { createExchange } = require('./exchange');
+const { createInbox } = require('./inbox');
+const { createPush } = require('./push');
 const E = require('../js/engine.js');
 
 const ROOT = path.join(__dirname, '..');
 const PORT = +process.env.PORT || 3210;
 const store = createStore();
+const inbox = createInbox(store, (id, type, data) => push(id, type, data));
+const pushSvc = createPush(store);
 let catalog, XC; // definidos em boot(), depois de carregar o banco
 
 /* ---------- banco (Supabase) ---------- */
@@ -39,14 +49,22 @@ function push(clubId, type, data) {
 }
 function pushAll(type, data) { for (const id of streams.keys()) push(id, type, data); }
 const online = id => (streams.get(id) || new Set()).size > 0;
+/** Notificação no celular (push.js) para quem não está com o jogo aberto; force = mesmo se estiver. */
+function notify(clubId, payload, force) { if (force || !online(clubId)) pushSvc.send(clubId, payload); }
+/** Aviso na tela; quem está fora recebe no celular (leilão, trocas e avisos de liga passam por aqui). */
+function pushNote(clubId, type, data) {
+  push(clubId, type, data);
+  if (type === 'note' && data && data.text) notify(clubId, { title: 'Football Manager Online', body: data.text, tag: 'note' });
+}
 
 
 /* ---------- visões públicas ---------- */
 function publicClub(c) {
   const players = c.squad.map(id => catalog.playerById.get(id)).filter(Boolean);
+  const h = hiddenCampaign(c.id); // jogo ainda passando na tela: a campanha só muda no apito final
   return {
     id: c.id, name: c.name, manager: c.manager, color: c.color, budget: c.budget, facilities: facilitiesOf(c),
-    points: c.points, played: c.played, w: c.w, d: c.d, l: c.l, gf: c.gf, ga: c.ga,
+    points: c.points - h.points, played: c.played - h.played, w: c.w - h.w, d: c.d - h.d, l: c.l - h.l, gf: c.gf - h.gf, ga: c.ga - h.ga,
     online: online(c.id), squadSize: players.length, squadValue: players.reduce((s, p) => s + p.value, 0)
   };
 }
@@ -59,11 +77,15 @@ function privateClub(c) {
   return Object.assign(publicClub(c), {
     squad: c.squad, coach: c.coach, formation: c.formation, lineup: c.lineup, tactic: c.tactic || 'balanced', plan: c.plan || [], google: c.google ? { email: c.google.email } : null, hasPassword: !!c.passHash,
     fitness: Object.fromEntries(c.squad.map(id => [id, TR.view(catalog.train.get(id), now, m)])), // condição física, descanso e treinos que restam hoje
-    mods: m
+    mods: m,
+    moral: Object.fromEntries(c.squad.map(id => [id, LK.moralOf(c, id)])), // vestiário (0-100)
+    talk: c.extra && c.extra.talk ? c.extra.talk.style : null, // preleção guardada para o próximo jogo oficial
+    unread: inbox.unread(c.id),
+    trophies: (c.extra && c.extra.trophies) || []
   });
 }
-/** Condição física atual (0-100) de um jogador: entra na partida como energia inicial. */
-const condOf = (id, m = modsFor(id)) => TR.condition(catalog.train.get(id), Date.now(), m);
+/** Condição física (0-100) de um jogador agora (ou no instante `at`): entra na partida como energia inicial. */
+const condOf = (id, m = modsFor(id), at = Date.now()) => TR.condition(catalog.train.get(id), at, m);
 /**
  * Congela a condição dos jogadores no ritmo de recuperação atual (o do departamento médico do dono). Chamar antes de o ritmo
  * mudar: melhoria do médico ou jogador trocando de clube (senão a recuperação desde o último jogo/treino seria recalculada no ritmo novo).
@@ -78,12 +100,13 @@ function settleFitness(ids) {
  * Time que vai a campo: quem está lesionado ou suspenso sai da escalação e entra o melhor reserva disponível da posição
  * (se não houver ninguém, ele joga no sacrifício, com no máximo 50% de condição). Os reservas saudáveis vão para o banco
  * (o motor usa para trocar quem se machucar). `official`: partida entre jogadores (tem lesões).
+ * o.lineup: escalação deste jogo (jogo marcado com vagas completadas pelo auxiliar); o.at: instante do jogo (condição física).
  */
-function matchSide(club, official) {
-  const now = Date.now(), slots = R.FORMATIONS[club.formation], m = modsOf(club);
+function matchSide(club, official, o = {}) {
+  const now = o.at || Date.now(), slots = R.FORMATIONS[club.formation], m = modsOf(club);
   const why = id => TR.unavailable(catalog.train.get(id), now);
-  const condOf_ = id => condOf(id, m);
-  const lineup = club.lineup.slice(), used = new Set(lineup), out = [], hurt = new Set(), skip = new Set();
+  const condOf_ = id => condOf(id, m, now);
+  const lineup = (o.lineup || club.lineup).slice(), used = new Set(lineup), out = [], hurt = new Set(), skip = new Set();
   const score = (p, slot) => (slot.pos === 'GK' ? p.ovr : p.ovr * (p.pos === slot.pos ? 1.05 : p.role === slot.role ? 1 : 0.85)) * (0.7 + 0.3 * condOf_(p.id) / 100);
   for (const id of club.squad) if (why(id)) skip.add(id);
   lineup.forEach((id, i) => {
@@ -101,16 +124,20 @@ function matchSide(club, official) {
     cond: id => (hurt.has(id) ? Math.min(50, condOf_(id)) : condOf_(id))
   };
 }
-const sideDef = (club, side) => R.buildTeamDef(club, side.lineup, club.formation, catalog, side.cond, { bench: side.bench, injuries: side.injuries, skip: side.skip, crowd: side.crowd });
+const sideDef = (club, side) => R.buildTeamDef(club, side.lineup, club.formation, catalog, side.cond, { bench: side.bench, injuries: side.injuries, skip: side.skip, crowd: side.crowd, mult: side.mult });
+const avgOvr = ids => { const l = ids.map(id => catalog.playerById.get(id)).filter(Boolean); return l.length ? l.reduce((t, p) => t + p.ovr, 0) / l.length : 0; };
 
 /* ---------- partidas ---------- */
 function simulate(homeDef, awayDef, seed, knockout) {
   const m = new E.Match(homeDef, awayDef, { seed, knockout: !!knockout });
   const goals = [], tally = new FM.Tally();
-  m.on(ev => { tally.add(ev); if (ev.type === 'goal') goals.push({ min: ev.min, team: ev.team, side: ev.team, player: ev.player ? ev.player.name : '', og: !!ev.og, assist: ev.og ? null : tally.lastAssist }); });
+  m.on(ev => {
+    tally.add(ev);
+    if (ev.type === 'goal') goals.push(Object.assign({ min: ev.min, team: ev.team, side: ev.team, player: ev.player ? ev.player.name : '', og: !!ev.og, assist: ev.og ? null : tally.lastAssist }, tally.lastKind ? { kind: tally.lastKind } : {}));
+  });
   let n = 0;
   while (!m.finished && n < 100000) { m.update(1 / 60); n++; }
-  return { score: [m.home.score, m.away.score], goals, stats: { home: m.home.stats, away: m.away.stats }, pens: m.pens ? m.pens.score.slice() : null, winner: m.winner, tally, energy: m.energyReport() };
+  return { score: [m.home.score, m.away.score], goals, stats: { home: m.home.stats, away: m.away.stats }, pens: m.pens ? m.pens.score.slice() : null, winner: m.winner, tally, energy: m.energyReport(), steps: n };
 }
 
 function cpuDef(exclude = []) {
@@ -131,7 +158,9 @@ function cpuDef(exclude = []) {
 
 /* ---------- reprodução sincronizada (partidas entre dois jogadores) ---------- */
 // O servidor guarda o "relógio" da partida; cada cliente calcula o mesmo instante (tick) a partir dele.
-const sessions = new Map(); // matchId -> { clubs, baseTick, baseTime, speed, paused, ended, createdAt }
+// Jogo marcado de liga: "transmissão" (broadcast) que começa no horário do jogo; os membros da liga assistem e conversam juntos,
+// e ninguém pausa nem acelera para os outros (quem mexe nos controles sai da transmissão só na própria tela).
+const sessions = new Map(); // matchId -> { clubs, spectators, broadcast, baseTick, baseTime, speed, paused, ended, createdAt, chat }
 const SESSION_TTL = 30 * 60 * 1000;
 const START_DELAY = 4000; // dá tempo dos dois navegadores carregarem
 function sessionTick(s) {
@@ -139,26 +168,67 @@ function sessionTick(s) {
   if (s.paused) return s.baseTick;
   return s.baseTick + Math.max(0, Date.now() - s.baseTime) / 1000 * s.speed * 60;
 }
-const playbackOf = s => ({ baseTick: s.baseTick, baseTime: s.baseTime, speed: s.speed, paused: s.paused, ended: s.ended, serverNow: Date.now() });
+const playbackOf = s => ({ baseTick: s.baseTick, baseTime: s.baseTime, speed: s.speed, paused: s.paused, ended: s.ended, broadcast: !!s.broadcast, serverNow: Date.now() });
 const liveSession = id => { const s = sessions.get(id); return s && Date.now() - s.createdAt < SESSION_TTL ? s : null; };
+const sessionMembers = s => [...new Set(s.clubs.concat(s.spectators || []))];
+/**
+ * A partida ainda está passando na tela (o servidor já sabe o resultado, mas ninguém deveria saber)? Enquanto estiver, placar,
+ * tabela, campanha, jornal e avisos não mostram o resultado (quem pula para o fim encerra a sessão e libera).
+ */
+const unrevealed = id => { const s = liveSession(id); return !!(s && s.steps && !s.ended && sessionTick(s) < s.steps); };
+/** O que as partidas ainda não reveladas somaram na campanha de um clube (para descontar das telas até o fim do jogo). */
+function hiddenCampaign(clubId) {
+  const d = { played: 0, points: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0 };
+  for (const [id, s] of sessions) {
+    if (!s.result || !s.result.clubs.includes(clubId) || !unrevealed(id)) continue;
+    const i = s.result.clubs.indexOf(clubId), gf = s.result.score[i], ga = s.result.score[1 - i];
+    const won = gf > ga || (gf === ga && s.result.winner === (i ? 'away' : 'home')), lost = gf < ga || (gf === ga && s.result.winner && !won);
+    d.played++; d.gf += gf; d.ga += ga;
+    if (won) { d.w++; d.points += 3; } else if (lost) d.l++; else { d.d++; d.points++; }
+  }
+  return d;
+}
 
+/**
+ * Joga uma partida. opts: { knockout, league, fixtureId, stage, noSession, lineups: { home, away } (jogo marcado: escalação com as
+ * vagas completadas), filled: { home, away } (nomes de quem o auxiliar escalou), at (horário do jogo marcado), session: { baseTime,
+ * spectators } (transmissão ao vivo) }.
+ */
 function playMatch(home, awayClub, isCpu, opts = {}) {
-  const sides = { home: matchSide(home, !isCpu), away: isCpu ? null : matchSide(awayClub, true) };
-  if (!isCpu) sides.home.crowd = FAC.crowd(home.facilities); // torcida do mandante (como a bilheteria, só em partida oficial)
+  const at = opts.at || Date.now(), lu = opts.lineups || {};
+  const sides = { home: matchSide(home, !isCpu, { lineup: lu.home, at }), away: isCpu ? null : matchSide(awayClub, true, { lineup: lu.away, at }) };
+  let talks = null, classic = false;
+  if (!isCpu) {
+    sides.home.crowd = FAC.crowd(home.facilities); // torcida do mandante (como a bilheteria, só em partida oficial)
+    classic = NW.isClassic(db.matches, home.id, awayClub.id);
+    // vestiário: moral de cada jogador (até ±3%) e a preleção guardada (depende de o time ser favorito ou azarão)
+    const oh = avgOvr(sides.home.lineup), oa = avgOvr(sides.away.lineup);
+    talks = { home: LK.useTalk(home, oh, oa), away: LK.useTalk(awayClub, oa, oh) };
+    for (const [k, c] of [['home', home], ['away', awayClub]]) {
+      const t = talks[k];
+      sides[k].mult = id => +(LK.moralMult(LK.moralOf(c, id)) * (1 + (t ? t.k : 0))).toFixed(4);
+    }
+  }
   const homeDef = sideDef(home, sides.home);
   const awayDef = isCpu ? cpuDef(sides.home.lineup) : sideDef(awayClub, sides.away);
   const seed = crypto.randomInt(1, 2 ** 31);
   const knockout = !!opts.knockout;
   const res = simulate(homeDef, awayDef, seed, knockout);
   const rec = {
-    id: crypto.randomUUID(), seed, engine: E.VERSION, at: Date.now(), cpu: !!isCpu, knockout,
+    id: crypto.randomUUID(), seed, engine: E.VERSION, at, cpu: !!isCpu, knockout,
     home: { id: home.id, name: home.name }, away: { id: isCpu ? null : awayClub.id, name: awayDef.name },
     homeDef, awayDef, score: res.score, goals: res.goals, stats: res.stats, pens: res.pens, winner: res.winner,
     league: opts.league ? { id: opts.league.id, name: opts.league.name, stage: opts.stage } : null
   };
   db.matches.push(rec);
   if (db.matches.length > 300) db.matches.shift();
-  if (!isCpu && !opts.noSession) sessions.set(rec.id, { clubs: [home.id, awayClub.id], baseTick: 0, baseTime: Date.now() + START_DELAY, speed: 1, paused: false, ended: false, createdAt: Date.now(), chat: [] });
+  // steps e result: para esconder o resultado até a partida terminar na tela (unrevealed)
+  const hide = { steps: res.steps, result: { clubs: isCpu ? [] : [home.id, awayClub.id], score: res.score, winner: res.winner } };
+  if (!isCpu && opts.session) {
+    sessions.set(rec.id, Object.assign({ clubs: [home.id, awayClub.id], spectators: opts.session.spectators || [], broadcast: true, baseTick: 0, baseTime: opts.session.baseTime, speed: 1, paused: false, ended: false, createdAt: Date.now(), chat: [] }, hide));
+  } else if (!isCpu && !opts.noSession) {
+    sessions.set(rec.id, Object.assign({ clubs: [home.id, awayClub.id], spectators: [], baseTick: 0, baseTime: Date.now() + START_DELAY, speed: 1, paused: false, ended: false, createdAt: Date.now(), chat: [] }, hide));
+  }
 
   if (!isCpu) { // amistoso contra a CPU é só teste de escalação: não muda pontos, saldo nem campanha
     const apply = (club, gf, ga, won) => {
@@ -171,22 +241,92 @@ function playMatch(home, awayClub, isCpu, opts = {}) {
     const tie = res.score[0] === res.score[1] && res.winner;
     apply(home, res.score[0], res.score[1], tie ? res.winner === 'home' : null);
     apply(awayClub, res.score[1], res.score[0], tie ? res.winner === 'away' : null);
-    const gate = FAC.tickets(home.facilities);
+    const gate = FAC.tickets(home.facilities) * (classic ? 2 : 1); // clássico: bilheteria em dobro
     home.budget += gate;
-    const notes = updateFitness(res, { home, away: awayClub });
-    if (gate) notes.home.unshift('🏟️ Bilheteria: € ' + gate / 1e6 + ' M');
+    const fit = updateFitness(res, { home, away: awayClub });
+    const notes = { home: fit.home, away: fit.away };
+    if (gate) notes.home.unshift('🏟️ Bilheteria: € ' + gate / 1e6 + ' M' + (classic ? ' (clássico: em dobro)' : ''));
     const health = updateHealth(res, { home, away: awayClub }, sides);
     for (const k of ['home', 'away']) notes[k] = health[k].concat(notes[k]);
-    updateForm(rec, res, { home, away: awayClub }, notes);
+    for (const k of ['home', 'away']) if (opts.filled && opts.filled[k] && opts.filled[k].length) notes[k].unshift('📝 O auxiliar completou a escalação: ' + opts.filled[k].join(', '));
+    const rated = updateForm(rec, res, { home, away: awayClub }, notes);
+    afterOfficial(rec, res, { home, away: awayClub }, sides, rated, notes, { talks, classic, fit, injured: health.injured });
   }
 
   if (opts.league && opts.fixtureId) {
     const out = LG.recordResult(opts.league, opts.fixtureId, { matchId: rec.id, score: res.score, pens: res.pens, goals: res.goals });
-    if (out && out.finished) awardLeague(opts.league);
-    notifyLeague(opts.league);
+    afterLeagueResult(opts.league, opts.fixtureId, out);
   }
   save();
   return rec;
+}
+
+/**
+ * Depois de uma partida oficial: notas de 0 a 10 (guardadas na partida para o jornal e os prêmios), relatório de cada clube na
+ * caixa de entrada, moral e mensagens do vestiário, missões do dia e notificação no celular de quem está fora.
+ */
+function afterOfficial(rec, res, cl, sides, rated, notes, x) {
+  const now = Date.now(), day = TR.dayKey(now);
+  // partida vista ao vivo: relatório, vestiário e missões aparecem quando o jogo termina na tela (sem estragar a surpresa)
+  const at = revealAt(rec.id);
+  const later = fn => { if (at > now) { const t = setTimeout(fn, at - now); if (t.unref) t.unref(); } else fn(); };
+  rec.stats.ratings = rated.map(r => ({ id: r.id, name: r.name, side: r.side, role: r.role, rating: r.rating }));
+  const energy = new Map(res.energy.map(e => [e.team + '|' + e.name, e.end]));
+  const SIDE = { fav: 'time favorito', even: 'jogo parelho', dog: 'time azarão' };
+  for (const side of ['home', 'away']) {
+    const club = cl[side], i = side === 'home' ? 0 : 1;
+    const gf = res.score[i], ga = res.score[1 - i];
+    const won = gf > ga || (gf === ga && res.winner === side);
+    const r = gf > ga ? 1 : gf < ga ? -1 : res.winner ? (res.winner === side ? 0.5 : -0.5) : 0;
+    const mine = rated.filter(y => y.side === side);
+    const focusOf = id => {
+      const y = mine.find(z => z.id === id), p = catalog.playerById.get(id);
+      const t = y && RP.trainFor(y.role, y.e, ga, energy.get(side + '|' + y.name));
+      return t ? t.focus : p ? TR.autoFocus(p, (catalog.train.get(id) || { gains: {} }).gains) : null;
+    };
+    const msgs = LK.afterMatch(club, {
+      r, played: new Map(mine.map(y => [y.id, { rating: y.rating, started: !y.sub }])), xi: sides[side].lineup,
+      injured: x.injured[side], tired: x.fit.tired[side], unavailable: new Set(club.squad.filter(id => TR.unavailable(catalog.train.get(id), now))),
+      catalog, now, focusOf
+    });
+    const t = x.talks && x.talks[side], extra = {};
+    if (t) extra.talk = t.label + ' (' + SIDE[t.side] + '): ' + (t.k >= 0 ? '+' : '') + Math.round(t.k * 100) + '% nas habilidades';
+    if (x.classic) extra.classic = true;
+    if (side === 'home' && rec.homeDef.crowd) extra.crowd = Math.round(rec.homeDef.crowd * 100);
+    inbox.add(club.id, 'report', RP.build(rec, side, rated, energy, notes[side], extra), { at });
+    for (const m of msgs) inbox.add(club.id, 'locker', m, { at: at + 1 });
+    const kinds = (rec.goals || []).filter(g => g.side === side && !g.og && g.kind).map(g => g.kind);
+    const st = rec.stats[side] || {}, so = rec.stats[side === 'home' ? 'away' : 'home'] || {};
+    const poss = st.poss + so.poss ? Math.round(st.poss / (st.poss + so.poss) * 100) : 50;
+    const done = MS.afterMatch(club, day, { gf, ga, won, poss, kinds });
+    if (t) done.push(...MS.progress(club, day, 'talk'));
+    missionsDone(club, done, at + 2);
+    const icon = won ? '✅' : r < 0 ? '❌' : '🤝';
+    later(() => notify(club.id, { title: icon + ' ' + rec.home.name + ' ' + rec.score[0] + ' x ' + rec.score[1] + ' ' + rec.away.name, body: 'Relatório da partida: notas, destaques e quem precisa treinar.', url: '/?report=' + rec.id, tag: 'report-' + rec.id }));
+  }
+  if (at > now) later(() => pushAll('clubs', {})); // apito final: tabela e campanha atualizam nas telas
+}
+
+/** Jogador chegou ao elenco: moral de recém-chegado; reforço (time já tinha 11) se apresenta no vestiário. */
+function arrived(club, p, always) {
+  const m = LK.arrive(club, p);
+  if (always || club.squad.length > 11) inbox.add(club.id, 'locker', m);
+}
+
+/** Missões cumpridas: aviso da diretoria (o prêmio já entrou no saldo). at: quando o aviso aparece (fim da transmissão). */
+function missionsDone(club, done, at) {
+  for (const d of done) inbox.add(club.id, 'board', { icon: '🎯', title: 'Missão cumprida', text: d.text + ': + ' + millions(d.prize) + ' no saldo.' }, { at });
+}
+
+/** Resultado registrado numa liga: bolão, próxima fase (com horário, se a liga tem agenda), prêmios no fim e aviso aos membros. */
+function afterLeagueResult(l, fixtureId, out) {
+  const f = l.fixtures.find(x => x.id === fixtureId);
+  const at = f && f.matchId ? revealAt(f.matchId) : Date.now(); // avisos só no fim da transmissão
+  if (f) settleBets(l, f, at);
+  if (out && out.newRound) SC.assign(l, Date.now());
+  if (out && out.finished) awardLeague(l, at);
+  notifyLeague(l);
+  if (at > Date.now()) { const t = setTimeout(() => notifyLeague(l), at - Date.now()); if (t.unref) t.unref(); } // a tabela muda na tela no apito final
 }
 /* ---------- estatísticas (artilharia, assistências...) ---------- */
 const pstats = new Map(); // "jogador|clube" -> linha de player_stats
@@ -216,13 +356,13 @@ function updateFitness(res, clubs) {
       if (!p) continue;
       const s = trainState(p.id), c = TR.afterMatch(s, e, now, modsOf(clubs[side]));
       rows.push([p.id, s]);
-      if (c < 60) tired[side].push({ name: p.short || p.name, cond: Math.floor(c) });
+      if (c < 60) tired[side].push({ id: p.id, name: p.short || p.name, cond: Math.floor(c) });
     }
     tired[side].sort((a, b) => a.cond - b.cond);
   }
   store.saveTraining(rows);
   const line = list => (list.length ? ['🔋 Cansados: ' + list.slice(0, 4).map(x => x.name + ' ' + x.cond + '%').join(', ') + ' (veja a aba Treino)'] : []);
-  return { home: line(tired.home), away: line(tired.away) };
+  return { home: line(tired.home), away: line(tired.away), tired };
 }
 
 /**
@@ -230,7 +370,7 @@ function updateFitness(res, clubs) {
  * machucou fica de 1 a 6 dias fora. Devolve as linhas do aviso de fim de jogo de cada lado.
  */
 function updateHealth(res, clubs, sides) {
-  const now = Date.now(), rows = new Map(), notes = { home: [], away: [] };
+  const now = Date.now(), rows = new Map(), notes = { home: [], away: [], injured: { home: [], away: [] } };
   for (const side of ['home', 'away']) {
     const club = clubs[side], n = notes[side];
     for (const x of sides[side].out) n.push('🔁 ' + x.out.short + ' (' + (x.why === 'injury' ? 'lesionado' : 'suspenso') + ') ficou fora: entrou ' + x.in.short);
@@ -242,7 +382,11 @@ function updateHealth(res, clubs, sides) {
       const s = trainState(p.id), c = TR.cards(s, e.yellow, e.red);
       if (c === 'red') n.push('🟥 ' + p.short + ' foi expulso: fica fora do próximo jogo');
       else if (c === 'yellows') n.push('🟨 ' + p.short + ' levou o ' + TR.YELLOW_LIMIT + 'º amarelo: fica fora do próximo jogo');
-      if (e.injured) { const d = TR.injure(s, now, undefined, undefined, modsOf(club)); n.push('🚑 ' + p.short + ': ' + s.injKind + ', ' + d + (d > 1 ? ' dias' : ' dia') + ' fora'); }
+      if (e.injured) {
+        const d = TR.injure(s, now, undefined, undefined, modsOf(club));
+        n.push('🚑 ' + p.short + ': ' + s.injKind + ', ' + d + (d > 1 ? ' dias' : ' dia') + ' fora');
+        notes.injured[side].push({ id: p.id, days: d, kind: s.injKind });
+      }
       rows.set(p.id, s);
     }
   }
@@ -253,9 +397,10 @@ function updateHealth(res, clubs, sides) {
 /**
  * Depois de uma partida entre jogadores: a nota de quem atuou (titulares e quem entrou) e do técnico sobe ou cai conforme o
  * resultado e o desempenho em campo (ver form.js); o valor de mercado acompanha. Os dois clubes recebem um resumo.
+ * Devolve quem atuou com a nota da partida (0 a 10): [{ id, name, side, role, pos, sub, rating, e (linha do Tally) }].
  */
 function updateForm(rec, res, clubs, extra) {
-  const changes = [], all = [], touched = new Set();
+  const changes = [], all = [], touched = new Set(), rated = [];
   for (const side of ['home', 'away']) {
     const club = clubs[side], def = side === 'home' ? rec.homeDef : rec.awayDef;
     const gf = res.score[side === 'home' ? 0 : 1], ga = res.score[side === 'home' ? 1 : 0];
@@ -270,9 +415,12 @@ function updateForm(rec, res, clubs, extra) {
     }
     const mine = [];
     for (const [name, w] of who) {
-      const e = res.tally.players.get(side + '|' + name) || { shots: 0, onTarget: 0, goals: 0, og: 0, assists: 0, saves: 0, steals: 0, intercepts: 0, passes: 0, risky: 0, fouls: 0, yellow: 0, red: 0 };
-      const pts = FM.rate(w.role, e, r, ga) * (w.sub ? 0.6 : 1); // quem entrou no decorrer do jogo pesa menos
+      const e = res.tally.players.get(side + '|' + name) || { shots: 0, onTarget: 0, goals: 0, og: 0, assists: 0, saves: 0, steals: 0, intercepts: 0, passes: 0, risky: 0, passLost: 0, lost: 0, fouls: 0, yellow: 0, red: 0 };
+      const raw = FM.rate(w.role, e, r, ga);
+      const pts = raw * (w.sub ? 0.6 : 1); // quem entrou no decorrer do jogo pesa menos
       mine.push({ id: w.id, name, side, coach: false, pts });
+      const cp = catalog.playerById.get(w.id);
+      rated.push({ id: w.id, name, side, role: w.role, pos: cp ? cp.pos : w.role, sub: w.sub, rating: FM.matchRating(raw), e });
       bumpStats(w.id, club.id, { apps: 1, goals: e.goals, assists: e.assists, og: e.og, shots: e.shots, on_target: e.onTarget, saves: e.saves, clean_sheets: (w.role === 'GK' || w.role === 'DEF') && ga === 0 ? 1 : 0, yellows: e.yellow, reds: e.red || 0, fouls: e.fouls }, touched);
     }
     if (club.coach && catalog.coachById.has(club.coach)) mine.push({ id: club.coach, name: catalog.coachById.get(club.coach).name, side, coach: true, pts: FM.rateCoach(r, gf - ga) });
@@ -294,13 +442,21 @@ function updateForm(rec, res, clubs, extra) {
     const parts = [];
     if (up.length) parts.push('📈 Em alta: ' + up.map(fmt).join(', '));
     if (down.length) parts.push('📉 Em baixa: ' + down.map(fmt).join(', '));
-    if (extra) parts.push(...extra[side]);
+    if (extra) { extra[side].push(...parts); parts.length = 0; parts.push(...extra[side]); } // o relatório também mostra
     const club = clubs[side];
-    if (parts.length && club) note(club.id, parts.join(' · '), rec.id);
+    // jogo simulado: aviso na hora; jogo visto ao vivo: nada agora (o relatório chega no fim); quem está fora recebe o relatório
+    if (parts.length && club && !sessions.has(rec.id)) push(club.id, 'note', { text: parts.join(' · '), matchId: rec.id });
   }
   pushAll('market', {}); // preços e notas mudaram
+  return rated;
 }
-const matchSummary = m => ({ id: m.id, at: m.at, cpu: m.cpu, home: m.home, away: m.away, score: m.score, goals: m.goals, pens: m.pens, league: m.league });
+const matchSummary = m => (unrevealed(m.id)
+  ? { id: m.id, at: m.at, cpu: m.cpu, home: m.home, away: m.away, score: null, goals: [], pens: null, league: m.league, live: true } // ainda passando: sem placar
+  : { id: m.id, at: m.at, cpu: m.cpu, home: m.home, away: m.away, score: m.score, goals: m.goals, pens: m.pens, league: m.league });
+/** Partidas cujo resultado já pode aparecer (as que ainda passam ao vivo ficam de fora do jornal, da seleção e dos prêmios). */
+const revealedMatches = () => db.matches.filter(m => !unrevealed(m.id));
+/** Quando o resultado de uma partida pode aparecer (fim da transmissão; já, se não há transmissão). */
+const revealAt = id => { const s = sessions.get(id); return s && s.steps ? Math.max(Date.now(), s.baseTime + s.steps / 60 * 1000 + 3000) : Date.now(); };
 
 /* ---------- API ---------- */
 const routes = {};
@@ -478,7 +634,9 @@ route('POST', '/api/password', (req, url, body) => {
 route('GET', '/api/meta', () => ({
   engine: E.VERSION, source: catalog.source, startBudget: R.START_BUDGET, buyPremium: R.BUY_PREMIUM, sellRatio: R.SELL_RATIO, squadMax: R.SQUAD_MAX,
   formations: R.FORMATIONS, tactics: R.TACTICS, maxSubs: R.MAX_SUBS, maxTacticChanges: R.MAX_TACTIC_CHANGES, prize: R.PRIZE, chat: { emojis: CH.EMOJIS, taunts: CH.TAUNTS },
-  training: TR.meta(), facilities: FAC.meta()
+  training: TR.meta(), facilities: FAC.meta(),
+  when: R.WHEN, talks: R.TALKS, talkEffects: E.TALK, pre: LK.PRE, promiseGames: LK.PROMISE_GAMES, days: SC.DAY_NAMES, missionPrize: MS.GOAL_PRIZE,
+  push: !!pushSvc.publicKey()
 }));
 
 const ownerTag = id => { const o = ownerOf(id); return o ? { id: o.id, name: o.name } : null; };
@@ -505,7 +663,7 @@ route('GET', '/api/stats', (req, url) => {
 
 /** Ficha pública de um clube: campanha, técnico e elenco com as estatísticas de cada jogador pelo clube. */
 route('GET', '/api/club', (req, url) => {
-  auth(req, url);
+  const me = auth(req, url);
   const c = db.clubs[url.searchParams.get('id')];
   if (!c) bad('Clube não encontrado.', 404);
   const own = id => pstats.get(id + '|' + c.id);
@@ -515,7 +673,9 @@ route('GET', '/api/club', (req, url) => {
   return {
     club: Object.assign(publicClub(c), { formation: c.formation }), // publicClub já traz as instalações
     coach: coach ? { id: coach.id, name: coach.name, ovr: coach.ovr } : null,
-    squad, totals: statsView(sumStats([...pstats.values()].filter(r => r.club_id === c.id)))
+    squad, totals: statsView(sumStats([...pstats.values()].filter(r => r.club_id === c.id))),
+    trophies: (c.extra && c.extra.trophies) || [],
+    h2h: me.id !== c.id ? NW.h2h(revealedMatches(), me.id, c.id) : null // retrospecto do meu clube contra este
   };
 });
 
@@ -568,6 +728,7 @@ route('POST', '/api/buy', (req, url, body) => {
     if (club.squad.length >= R.SQUAD_MAX) bad('Elenco cheio (máx. ' + R.SQUAD_MAX + ').');
     settleFitness([item.id]);
     club.squad.push(item.id);
+    arrived(club, item);
   }
   club.budget -= price;
   save();
@@ -607,9 +768,12 @@ route('POST', '/api/lineup', (req, url, body) => {
 
 route('POST', '/api/tactics', (req, url, body) => {
   const club = auth(req, url);
-  const plan = (Array.isArray(body.plan) ? body.plan : []).map(e => (e && e.type === 'tactic'
-    ? { type: 'tactic', min: +e.min, style: String(e.style) }
-    : { type: 'sub', min: +(e && e.min), out: +(e && e.out), in: String(e && e.in) }));
+  const plan = (Array.isArray(body.plan) ? body.plan : []).map(e => {
+    const when = e && e.when ? { when: String(e.when) } : {}; // instrução condicional (motor v8): perdendo, empatando, ganhando...
+    if (e && e.type === 'talk') return Object.assign({ type: 'talk', min: R.TALK_MIN, style: String(e.style) }, when);
+    if (e && e.type === 'tactic') return Object.assign({ type: 'tactic', min: +e.min, style: String(e.style) }, when);
+    return Object.assign({ type: 'sub', min: +(e && e.min), out: +(e && e.out), in: String(e && e.in) }, when);
+  });
   const err = R.validatePlan(body.tactic, plan, club.formation, club.squad, club.lineup, catalog);
   if (err) bad(err);
   club.tactic = body.tactic;
@@ -667,6 +831,8 @@ route('POST', '/api/train', (req, url, body) => {
   }
   if (!done.length) bad(skipped[0] || 'Nenhum jogador pôde treinar.');
   store.saveTraining(rows);
+  missionsDone(club, MS.progress(club, TR.dayKey(now), 'train', done.length));
+  save();
   return { club: privateClub(club), done, skipped, players: done.map(d => Object.assign({}, catalog.playerById.get(d.id), { owner: ownerTag(d.id) })) };
 });
 
@@ -793,7 +959,9 @@ route('GET', '/api/match', (req, url) => {
   const m = db.matches.find(x => x.id === url.searchParams.get('id'));
   if (!m) bad('Partida não encontrada.', 404);
   const sess = liveSession(m.id);
-  return { match: m, engine: E.VERSION, playback: sess ? playbackOf(sess) : null, chat: sess ? sess.chat : [] };
+  const me = auth(req, url), inSess = sess && sessionMembers(sess).includes(me.id);
+  // quem não participa vê a transmissão (jogo marcado) sincronizada, mas sem o chat se não for da liga
+  return { match: m, engine: E.VERSION, playback: sess && (inSess || sess.broadcast) ? playbackOf(sess) : null, chat: inSess ? sess.chat : [], canChat: !!inSess };
 });
 
 /* ---------- chat ---------- */
@@ -818,12 +986,12 @@ route('POST', '/api/match/chat', (req, url, body) => {
   const me = auth(req, url);
   const sess = liveSession(String(body.id));
   if (!sess) bad('O chat existe só em partidas entre dois jogadores, logo depois de jogadas.', 404);
-  if (!sess.clubs.includes(me.id)) bad('Você não participa desta partida.', 403);
+  if (!sessionMembers(sess).includes(me.id)) bad('Você não participa desta partida.', 403);
   if (!chatLimit.allow(me.id)) bad('Calma! Você está mandando mensagens rápido demais.', 429);
   const msg = makeMsg(me, body);
   sess.chat.push(msg);
   if (sess.chat.length > 60) sess.chat.shift();
-  for (const id of sess.clubs) push(id, 'chat', { matchId: String(body.id), msg });
+  for (const id of sessionMembers(sess)) push(id, 'chat', { matchId: String(body.id), msg });
   return { ok: true };
 });
 
@@ -846,6 +1014,7 @@ route('POST', '/api/match/control', (req, url, body) => {
   const sess = liveSession(String(body.id));
   if (!sess) bad('Esta partida não tem controle compartilhado (só vale para partidas entre dois jogadores, recém-jogadas).', 404);
   if (!sess.clubs.includes(me.id)) bad('Você não participa desta partida.', 403);
+  if (sess.broadcast) bad('Transmissão ao vivo: ninguém pausa nem acelera para os outros.', 409);
   const now = Date.now();
   let label;
   if (body.action === 'pause' && !sess.paused && !sess.ended) {
@@ -879,14 +1048,104 @@ route('POST', '/api/trade/respond', xc((club, b) => ({ trade: XC.respondTrade(cl
 /* ---------- ligas e copas ---------- */
 const MAX_LEAGUES_PER_CLUB = 6;
 function notifyLeague(league) { for (const id of league.members) push(id, 'league', { id: league.id }); }
-function note(clubId, text, matchId) { push(clubId, 'note', { text, matchId: matchId || null }); }
-function awardLeague(league) {
+function note(clubId, text, matchId) { pushNote(clubId, 'note', { text, matchId: matchId || null }); }
+const AWARD_PRIZE = 5e6; // artilheiro e craque da competição: prêmio para o clube do jogador
+function addTrophy(club, t) {
+  if (!club) return;
+  if (!club.extra) club.extra = {};
+  club.extra.trophies = ((club.extra.trophies || []).concat([Object.assign({ at: Date.now() }, t)])).slice(-60);
+}
+/** Craque da competição: melhor média de notas (quem jogou pelo menos metade dos jogos do próprio clube). */
+function bestOfLeague(league) {
+  const per = new Map(), games = new Map();
+  for (const f of league.fixtures) {
+    const m = f.matchId && db.matches.find(x => x.id === f.matchId);
+    if (!m || !m.stats || !m.stats.ratings) continue;
+    for (const side of ['home', 'away']) games.set(m[side].id, (games.get(m[side].id) || 0) + 1);
+    for (const r of m.stats.ratings) {
+      const clubId = m[r.side].id, k = clubId + '|' + r.id;
+      const cur = per.get(k) || { id: r.id, name: r.name, clubId, sum: 0, n: 0 };
+      cur.sum += r.rating; cur.n++;
+      per.set(k, cur);
+    }
+  }
+  const list = [...per.values()].filter(x => x.n >= Math.max(1, Math.ceil((games.get(x.clubId) || 1) / 2))).map(x => Object.assign(x, { avg: +(x.sum / x.n).toFixed(2) }));
+  return list.sort((a, b) => b.avg - a.avg || b.n - a.n)[0] || null;
+}
+/** Fim da competição: prêmios em dinheiro, metas da diretoria, artilheiro e craque, troféus e avisos (at: quando os avisos aparecem). */
+function awardLeague(league, at = Date.now()) {
   const champ = db.clubs[league.champion], runner = league.runnerUp && db.clubs[league.runnerUp];
   if (champ) champ.budget += LG.LEAGUE_PRIZE.champion;
   if (runner) runner.budget += LG.LEAGUE_PRIZE.runnerUp;
-  for (const id of league.members) {
-    note(id, '🏆 ' + league.name + ' terminou! Campeão: ' + (champ ? champ.name : '—') + '. Prêmio: € ' + LG.LEAGUE_PRIZE.champion / 1e6 + ' M para o campeão e € ' + LG.LEAGUE_PRIZE.runnerUp / 1e6 + ' M para o vice.');
+  const cup = league.format === 'cup';
+  addTrophy(champ, { kind: cup ? 'cup' : 'league', title: 'Campeão · ' + league.name, league: league.id });
+  addTrophy(runner, { kind: 'runner', title: 'Vice-campeão · ' + league.name, league: league.id });
+  const top = LG.scorers(league)[0], best = bestOfLeague(league);
+  const awards = { champion: league.champion, runnerUp: league.runnerUp || null };
+  if (top) {
+    awards.scorer = { player: top.player, clubId: top.clubId, goals: top.goals };
+    const c = db.clubs[top.clubId];
+    if (c) { c.budget += AWARD_PRIZE; addTrophy(c, { kind: 'scorer', title: 'Artilheiro · ' + league.name + ': ' + top.player + ' (' + top.goals + ' gols)', league: league.id }); }
   }
+  if (best) {
+    awards.best = { player: best.name, clubId: best.clubId, avg: best.avg, games: best.n };
+    const c = db.clubs[best.clubId];
+    if (c) { c.budget += AWARD_PRIZE; addTrophy(c, { kind: 'best', title: 'Craque · ' + league.name + ': ' + best.name + ' (média ' + best.avg.toFixed(1).replace('.', ',') + ')', league: league.id }); }
+  }
+  if (!league.extra) league.extra = {};
+  league.extra.awards = awards;
+  const met = MS.evalGoals(league, cup ? [] : LG.standings(league));
+  for (const id of league.members) {
+    const c = db.clubs[id];
+    if (!c) continue;
+    const lines = ['Campeão: ' + (champ ? champ.name : '—') + (runner ? ' · vice: ' + runner.name : '') + '. Prêmio de ' + millions(LG.LEAGUE_PRIZE.champion) + ' para o campeão e ' + millions(LG.LEAGUE_PRIZE.runnerUp) + ' para o vice.'];
+    if (awards.scorer) lines.push('Artilheiro: ' + awards.scorer.player + ' (' + clubInfo(awards.scorer.clubId).name + '), ' + awards.scorer.goals + ' gols — ' + millions(AWARD_PRIZE) + ' para o clube.');
+    if (awards.best) lines.push('Craque da competição: ' + awards.best.player + ' (' + clubInfo(awards.best.clubId).name + '), média ' + awards.best.avg.toFixed(1).replace('.', ',') + ' — ' + millions(AWARD_PRIZE) + ' para o clube.');
+    const g = league.extra.goals && league.extra.goals[id];
+    if (g) {
+      const ok = met.get(id);
+      if (ok) c.budget += MS.GOAL_PRIZE;
+      lines.push(ok ? '🏅 Meta da diretoria cumprida ("' + g.text + '"): bônus de ' + millions(MS.GOAL_PRIZE) + '.' : '📋 A meta da diretoria ("' + g.text + '") não foi cumprida.');
+    }
+    inbox.add(id, 'board', { icon: '🏆', title: league.name + ' terminou!', text: lines.join('\n'), league: league.id }, { at });
+    const tell = () => note(id, '🏆 ' + league.name + ' terminou! Campeão: ' + (champ ? champ.name : '—') + '. Veja os prêmios na caixa de mensagens.');
+    if (at > Date.now()) { const t = setTimeout(tell, at - Date.now()); if (t.unref) t.unref(); } else tell();
+  }
+}
+
+/* bolão: 3 pontos por placar exato, 1 por acertar o vencedor (ou o empate); prêmio em dinheiro para quem acerta */
+const BET_PRIZE = { 3: 3e6, 1: 1e6 };
+function betPoints(bet, score) {
+  if (!bet || !score) return 0;
+  if (bet[0] === score[0] && bet[1] === score[1]) return 3;
+  return Math.sign(bet[0] - bet[1]) === Math.sign(score[0] - score[1]) ? 1 : 0;
+}
+function settleBets(l, f, at) {
+  const bets = (f.extra && f.extra.bets) || {};
+  for (const [id, bet] of Object.entries(bets)) {
+    const c = db.clubs[id], pts = betPoints(bet, f.score);
+    if (!c || !pts) continue;
+    c.budget += BET_PRIZE[pts];
+    inbox.add(id, 'board', { icon: '🎯', title: 'Bolão · ' + l.name, text: (pts === 3 ? 'Na mosca! Você cravou ' : 'Você acertou o resultado de ') + clubInfo(f.home).name + ' ' + f.score[0] + ' x ' + f.score[1] + ' ' + clubInfo(f.away).name + ' (palpite ' + bet[0] + ' x ' + bet[1] + '): + ' + millions(BET_PRIZE[pts]) + '.' }, { at });
+  }
+}
+/** Jogo com resultado já visível (o que ainda passa ao vivo conta como não jogado nas telas). */
+const shown = f => f.score && !(f.matchId && unrevealed(f.matchId));
+/** A liga como as telas devem ver: jogos ainda passando ao vivo sem placar. */
+const leagueShown = l => (l.fixtures.some(f => f.score && !shown(f))
+  ? Object.assign({}, l, { fixtures: l.fixtures.map(f => (shown(f) || !f.score ? f : Object.assign({}, f, { score: null, pens: null, winner: null, goals: [] }))) })
+  : l);
+function betTable(l) {
+  const rows = new Map(l.members.map(id => [id, { club: clubInfo(id), pts: 0, exact: 0, hits: 0, bets: 0 }]));
+  for (const f of l.fixtures) for (const [id, bet] of Object.entries((f.extra && f.extra.bets) || {})) {
+    const r = rows.get(id);
+    if (!r) continue;
+    r.bets++;
+    if (!shown(f)) continue;
+    const p = betPoints(bet, f.score);
+    r.pts += p; if (p === 3) r.exact++; if (p) r.hits++;
+  }
+  return [...rows.values()].sort((a, b) => b.pts - a.pts || b.exact - a.exact || a.club.name.localeCompare(b.club.name));
 }
 const clubInfo = id => { const c = db.clubs[id]; return c ? { id: c.id, name: c.name, manager: c.manager, color: c.color, online: online(c.id) } : { id, name: '(removido)', manager: '', color: '#888888', online: false }; };
 function findLeague(id, me) {
@@ -894,17 +1153,35 @@ function findLeague(id, me) {
   if (!l || !l.members.includes(me.id)) bad('Liga não encontrada.', 404);
   return l;
 }
+// A final ainda passando ao vivo: a competição aparece em andamento, sem campeão (o resultado sai no apito final).
+const endHidden = l => l.status === 'finished' && l.fixtures.some(f => f.score && !shown(f));
 function leagueSummary(l) {
-  return { id: l.id, code: l.code, name: l.name, format: l.format, rounds: l.rounds, status: l.status, members: l.members.length, owner: l.owner, champion: l.champion ? clubInfo(l.champion).name : null };
+  const s = l.extra && l.extra.schedule, hide = endHidden(l);
+  const next = l.fixtures.filter(f => !f.score && f.at).sort((a, b) => a.at - b.at)[0];
+  return { id: l.id, code: l.code, name: l.name, format: l.format, rounds: l.rounds, status: hide ? 'running' : l.status, members: l.members.length, owner: l.owner,
+    champion: l.champion && !hide ? clubInfo(l.champion).name : null, schedule: s || null, scheduleText: s ? SC.describe(s) : null, next: next ? next.at : null };
 }
-function leagueView(l) {
-  const fx = f => ({ id: f.id, round: f.round, stage: f.stage, home: clubInfo(f.home), away: clubInfo(f.away), matchId: f.matchId, score: f.score, pens: f.pens, winner: f.winner });
+function leagueView(l, me) {
+  const now = Date.now(), V = leagueShown(l), hide = endHidden(l);
+  const fx = f => {
+    const bets = (f.extra && f.extra.bets) || {};
+    return {
+      id: f.id, round: f.round, stage: f.stage, home: clubInfo(f.home), away: clubInfo(f.away), matchId: f.matchId, score: f.score, pens: f.pens, winner: f.winner,
+      at: f.at || null, atLabel: f.at ? SC.label(f.at) : null, wo: (f.extra && f.extra.wo) || null,
+      live: !!(f.matchId && unrevealed(f.matchId)), // transmissão em andamento
+      myBet: me && bets[me.id] ? bets[me.id] : null, bets: Object.keys(bets).length, betOpen: !f.score && !f.matchId && (!f.at || f.at > now),
+      classic: NW.isClassic(revealedMatches(), f.home, f.away)
+    };
+  };
+  const goals = (l.extra && l.extra.goals) || {};
   return {
-    league: Object.assign(leagueSummary(l), { members: l.members.map(clubInfo), runnerUp: l.runnerUp ? clubInfo(l.runnerUp).name : null, limits: LG.LIMITS[l.format], prize: LG.LEAGUE_PRIZE }),
-    fixtures: l.fixtures.map(fx),
-    standings: l.format === 'league' && l.status !== 'lobby' ? LG.standings(l).map(r => Object.assign({ club: clubInfo(r.clubId) }, r)) : [],
-    scorers: LG.scorers(l).map(x => Object.assign({}, x, { club: clubInfo(x.clubId).name })),
-    assisters: LG.assisters(l).map(x => Object.assign({}, x, { club: clubInfo(x.clubId).name })),
+    league: Object.assign(leagueSummary(l), { members: l.members.map(clubInfo), runnerUp: l.runnerUp && !hide ? clubInfo(l.runnerUp).name : null, limits: LG.LIMITS[l.format], prize: LG.LEAGUE_PRIZE,
+      myGoal: me && goals[me.id] ? goals[me.id] : null, goalPrize: MS.GOAL_PRIZE, awards: hide ? null : (l.extra && l.extra.awards) || null }),
+    fixtures: V.fixtures.map(fx),
+    standings: l.format === 'league' && l.status !== 'lobby' ? LG.standings(V).map(r => Object.assign({ club: clubInfo(r.clubId) }, r)) : [],
+    scorers: LG.scorers(V).map(x => Object.assign({}, x, { club: clubInfo(x.clubId).name })),
+    assisters: LG.assisters(V).map(x => Object.assign({}, x, { club: clubInfo(x.clubId).name })),
+    bolao: l.status !== 'lobby' ? betTable(l) : [],
     chat: l.chat || []
   };
 }
@@ -921,10 +1198,12 @@ route('POST', '/api/leagues', (req, url, body) => {
   const format = body.format === 'cup' ? 'cup' : 'league';
   const mine = Object.values(db.leagues).filter(l => l.members.includes(me.id) && l.status !== 'finished').length;
   if (mine >= MAX_LEAGUES_PER_CLUB) bad('Você já participa de ' + MAX_LEAGUES_PER_CLUB + ' competições em andamento.');
+  let schedule = null;
+  if (body.schedule) { const p = SC.parse(body.schedule); if (p.error) bad(p.error); schedule = p.schedule; }
   const league = {
     id: crypto.randomUUID(), code: LG.newCode(c => Object.values(db.leagues).some(l => l.code === c)), name, format,
     rounds: format === 'league' && +body.rounds === 2 ? 2 : 1, owner: me.id, members: [me.id], status: 'lobby',
-    fixtures: [], advancing: [], champion: null, runnerUp: null, createdAt: Date.now()
+    fixtures: [], advancing: [], champion: null, runnerUp: null, createdAt: Date.now(), extra: schedule ? { schedule } : {}
   };
   db.leagues[league.id] = league;
   save();
@@ -964,15 +1243,58 @@ route('POST', '/api/leagues/start', (req, url, body) => {
   if (l.owner !== me.id) bad('Só quem criou a sala pode iniciar.', 403);
   const err = LG.start(l);
   if (err) bad(err);
+  SC.assign(l, Date.now()); // liga com agenda: cada rodada ganha horário
+  const goals = MS.boardGoals(l, new Map(l.members.map(id => [id, publicClub(db.clubs[id] || { squad: [] }).squadValue || 0])));
   save();
   notifyLeague(l);
-  for (const id of l.members) if (id !== me.id) note(id, '▶ ' + l.name + ' começou! Veja seus jogos na aba Ligas.');
-  return leagueView(l);
+  const first = l.fixtures.filter(f => f.at).sort((a, b) => a.at - b.at)[0];
+  for (const id of l.members) {
+    if (id !== me.id) note(id, '▶ ' + l.name + ' começou! Veja seus jogos na aba Ligas.');
+    const g = goals[id];
+    inbox.add(id, 'board', { icon: '📋', title: 'Diretoria · ' + l.name, text: 'A competição começou' + (first ? ' (primeira rodada ' + SC.label(first.at) + ', horário de Brasília)' : '') + '. Meta da diretoria para o seu clube: "' + g.text + '". Cumprindo, bônus de ' + millions(MS.GOAL_PRIZE) + '.', league: l.id });
+  }
+  return leagueView(l, me);
 });
 
 route('GET', '/api/leagues/detail', (req, url) => {
   const me = auth(req, url);
-  return Object.assign(leagueView(findLeague(url.searchParams.get('id'), me)), { me: me.id });
+  return Object.assign(leagueView(findLeague(url.searchParams.get('id'), me), me), { me: me.id });
+});
+
+/** Agenda da liga (dono): dias e horário dos jogos automáticos; null tira a agenda (volta a ser só desafio/simular). */
+route('POST', '/api/leagues/schedule', (req, url, body) => {
+  const me = auth(req, url);
+  const l = findLeague(body.id, me);
+  if (l.owner !== me.id) bad('Só quem criou a sala pode mudar a agenda.', 403);
+  if (l.status === 'finished') bad('A competição já terminou.');
+  let schedule = null;
+  if (body.schedule) { const p = SC.parse(body.schedule); if (p.error) bad(p.error); schedule = p.schedule; }
+  l.extra = Object.assign({}, l.extra, { schedule });
+  if (!schedule) delete l.extra.schedule;
+  for (const f of l.fixtures) if (!f.score) { f.at = null; if (f.extra) { delete f.extra.pre; delete f.extra.remind; } }
+  const n = SC.assign(l, Date.now());
+  save();
+  notifyLeague(l);
+  for (const id of l.members) if (id !== me.id) note(id, '🗓️ ' + l.name + ': ' + (schedule ? 'jogos automáticos ' + SC.describe(schedule) + ' (horário de Brasília).' : 'os jogos voltaram a ser por desafio.'));
+  return Object.assign(leagueView(l, me), { me: me.id, scheduled: n });
+});
+
+/** Bolão: palpite de placar de um jogo da liga (até o horário do jogo; pode mudar até lá). */
+route('POST', '/api/leagues/bet', (req, url, body) => {
+  const me = auth(req, url);
+  const l = findLeague(body.id, me);
+  if (l.status !== 'running') bad('A competição não está em andamento.');
+  const f = l.fixtures.find(x => x.id === body.fixtureId);
+  if (!f || f.score) bad('Esse jogo já aconteceu.', 409);
+  if (f.at && f.at <= Date.now()) bad('O palpite fecha no horário do jogo.', 409);
+  const s = Array.isArray(body.score) ? body.score.map(Number) : [];
+  if (s.length !== 2 || s.some(v => !Number.isInteger(v) || v < 0 || v > 20)) bad('Palpite inválido.');
+  f.extra = Object.assign({}, f.extra);
+  const first = !f.extra.bets || !f.extra.bets[me.id];
+  f.extra.bets = Object.assign({}, f.extra.bets, { [me.id]: s });
+  if (first) missionsDone(me, MS.progress(me, TR.dayKey(Date.now()), 'bet'));
+  save();
+  return { ok: true, bet: s, club: privateClub(me) };
 });
 
 route('POST', '/api/leagues/simulate', (req, url, body) => {
@@ -985,9 +1307,284 @@ route('POST', '/api/leagues/simulate', (req, url, body) => {
   const home = db.clubs[f.home], away = db.clubs[f.away];
   for (const c of [home, away]) { const e = ready(c); if (e) bad(c.name + ' ainda não montou o time (' + e + ')'); }
   const rec = playMatch(home, away, false, { knockout: l.format === 'cup', league: l, fixtureId: f.id, stage: f.stage, noSession: true });
+  save();
   const txt = f.stage + ' · ' + home.name + ' ' + rec.score[0] + ' x ' + rec.score[1] + ' ' + away.name + (rec.pens ? ' (pên. ' + rec.pens[0] + '-' + rec.pens[1] + ')' : '') + ' — simulado';
   for (const id of [home.id, away.id]) if (id !== me.id) note(id, l.name + ': ' + txt, rec.id);
   return { match: rec.id, score: rec.score, pens: rec.pens };
+});
+
+/* ---------- jogos em horário marcado ---------- */
+// A cada SCHEDULER_MS o servidor confere as ligas com agenda: 3 h antes o auxiliar manda a análise do adversário, 15 min antes
+// avisa no celular e no horário o jogo acontece sozinho (transmitido ao vivo para a liga). Se o servidor estava dormindo no
+// horário (plano grátis), joga os atrasados ao acordar: ninguém consegue mexer no time enquanto ele dorme, então dá no mesmo.
+const SCHEDULER_MS = 15000, PRE_NOTICE = 3 * 3600e3, REMIND = 15 * 60e3, LIVE_WINDOW = 10 * 60e3;
+
+/** Escalação do jogo marcado: a do técnico, com as vagas vazias completadas pelos melhores disponíveis. null = não tem 11 (W.O.). */
+function autoLineup(club, at) {
+  const slots = R.FORMATIONS[club.formation], m = modsOf(club), seen = new Set(), filled = [];
+  const P = id => catalog.playerById.get(id);
+  const lineup = slots.map((s, i) => {
+    const id = club.lineup[i], p = id && club.squad.includes(id) && P(id);
+    if (!p || seen.has(id) || (s.pos === 'GK') !== (p.pos === 'GK')) return null;
+    seen.add(id);
+    return id;
+  });
+  const pool = club.squad.map(P).filter(Boolean);
+  for (let i = 0; i < slots.length; i++) {
+    if (lineup[i]) continue;
+    const s = slots[i];
+    const score = p => (s.pos === 'GK' ? p.ovr : p.ovr * (p.pos === s.pos ? 1.05 : p.role === s.role ? 1 : 0.85)) *
+      (0.7 + 0.3 * TR.condition(catalog.train.get(p.id), at, m) / 100) * (TR.unavailable(catalog.train.get(p.id), at) ? 0.01 : 1);
+    const best = pool.filter(p => !seen.has(p.id) && (s.pos === 'GK') === (p.pos === 'GK')).sort((a, b) => score(b) - score(a))[0];
+    if (!best) return null;
+    lineup[i] = best.id; seen.add(best.id); filled.push(best.short || best.name);
+  }
+  return { lineup, filled };
+}
+
+function playScheduled(l, f, now) {
+  const home = db.clubs[f.home], away = db.clubs[f.away];
+  const H = home && autoLineup(home, f.at), A = away && autoLineup(away, f.at);
+  const title = l.name + ' · ' + f.stage;
+  if (!H || !A) { // W.O.: não tinha 11 jogadores com goleiro no horário
+    const wo = !H && !A ? 'both' : !H ? 'home' : 'away';
+    const score = wo === 'both' ? [0, 0] : wo === 'home' ? [0, 3] : [3, 0];
+    const out = LG.recordResult(l, f.id, { matchId: null, score, pens: null, goals: [], wo });
+    for (const c of [home, away]) {
+      if (!c) continue;
+      const absent = wo === 'both' || (wo === 'home') === (c === home);
+      inbox.add(c.id, 'board', { icon: '📋', title: 'W.O. · ' + title, text: absent
+        ? 'O ' + c.name + ' não tinha 11 jogadores (com um goleiro) no horário do jogo e perdeu por W.O. Mantenha o elenco completo para os jogos marcados.'
+        : 'O adversário não tinha time no horário: vitória por W.O. (3 x 0).' });
+      notify(c.id, { title: '📋 W.O. · ' + title, body: absent ? 'Seu clube não tinha 11 jogadores e perdeu por W.O.' : 'Vitória por W.O. (3 x 0).' });
+    }
+    afterLeagueResult(l, f.id, out);
+    return null;
+  }
+  const live = now - f.at < LIVE_WINDOW;
+  const rec = playMatch(home, away, false, {
+    knockout: l.format === 'cup', league: l, fixtureId: f.id, stage: f.stage, at: f.at,
+    lineups: { home: H.lineup, away: A.lineup }, filled: { home: H.filled, away: A.filled },
+    session: live ? { baseTime: f.at + START_DELAY, spectators: l.members.slice() } : null, noSession: !live
+  });
+  if (live) for (const id of l.members) push(id, 'live', { matchId: rec.id, league: l.name, stage: f.stage, home: home.name, away: away.name, mine: id === home.id || id === away.id });
+  pushAll('clubs', {});
+  return rec;
+}
+
+/** Análise do auxiliar para os dois clubes de um jogo marcado. */
+function scoutFixture(l, f) {
+  const now = Date.now();
+  for (const [meId, oppId] of [[f.home, f.away], [f.away, f.home]]) {
+    const me = db.clubs[meId], opp = db.clubs[oppId];
+    if (!me || !opp) continue;
+    const xi = c => c.lineup.map(id => id && catalog.playerById.get(id)).filter(Boolean);
+    const out = c => xi(c).filter(p => TR.unavailable(catalog.train.get(p.id), f.at));
+    const st = NW.streak(db.matches, opp.id).all.slice(0, 5).map(x => ({ w: 'V', d: 'E', l: 'D' }[x])).join(' ');
+    const text = LK.scout({
+      opp: { name: opp.name, formation: opp.formation, tactic: opp.tactic || 'balanced' }, oppXi: xi(opp), mineXi: xi(me), oppOut: out(opp).length,
+      mineOut: out(me).map(p => p.short || p.name), oppForm: st,
+      tired: xi(me).map(p => ({ short: p.short || p.name, cond: Math.floor(condOf(p.id, modsOf(me), now)) })).filter(x => x.cond < 60)
+    });
+    inbox.add(me.id, 'aux', { title: 'Análise do adversário · ' + opp.name, text, league: l.id, fixtureId: f.id, at: f.at, home: clubInfo(f.home).name, away: clubInfo(f.away).name, stage: f.stage });
+  }
+}
+
+function remindFixture(l, f) {
+  const h = clubInfo(f.home).name, a = clubInfo(f.away).name, when = SC.label(f.at).split(' às ')[1];
+  for (const id of [f.home, f.away]) {
+    notify(id, { title: '⏰ Seu jogo começa às ' + when, body: h + ' x ' + a + ' (' + l.name + '). Confira a escalação, as instruções do auxiliar e a preleção!', url: '/', urgent: true }, true);
+    push(id, 'note', { text: '⏰ ' + h + ' x ' + a + ' começa às ' + when + ' (' + l.name + '). Confira a escalação e faça a preleção!' });
+  }
+}
+
+let schedRunning = false;
+function runScheduler() {
+  if (schedRunning || !catalog) return;
+  schedRunning = true;
+  try {
+    const now = Date.now();
+    for (const l of Object.values(db.leagues)) {
+      if (l.status !== 'running' || !l.fixtures.some(f => f.at && !f.score)) continue;
+      let changed = false;
+      for (const f of l.fixtures) {
+        if (f.score || !f.at || f.at <= now) continue;
+        f.extra = f.extra || {};
+        if (!f.extra.pre && f.at - now <= PRE_NOTICE) { f.extra.pre = true; changed = true; scoutFixture(l, f); }
+        if (!f.extra.remind && f.at - now <= REMIND) { f.extra.remind = true; changed = true; remindFixture(l, f); }
+      }
+      for (const f of l.fixtures.filter(x => !x.score && x.at && x.at <= now).sort((a, b) => a.at - b.at)) {
+        if (l.status !== 'running' || f.score) continue;
+        try { playScheduled(l, f, now); } catch (e) { console.error('[agenda] falha no jogo', f.id, e); }
+        changed = true;
+      }
+      if (changed) save();
+    }
+  } finally { schedRunning = false; }
+}
+
+/** Acorda o servidor (chamado pelo "despertador" do Supabase perto dos jogos marcados). */
+route('GET', '/api/wake', () => { runScheduler(); return { ok: true }; });
+
+/* ---------- caixa de entrada, vestiário e conversas entre técnicos ---------- */
+route('GET', '/api/inbox', (req, url) => {
+  const me = auth(req, url);
+  const kind = url.searchParams.get('kind');
+  return { messages: inbox.list(me.id, inbox.KINDS.includes(kind) ? kind : null), unread: inbox.unread(me.id) };
+});
+route('POST', '/api/inbox/read', (req, url, body) => {
+  const me = auth(req, url);
+  inbox.markRead(me.id, { ids: Array.isArray(body.ids) ? body.ids.map(String) : null, kind: inbox.KINDS.includes(body.kind) ? body.kind : null, withId: body.with ? String(body.with) : null });
+  return { unread: inbox.unread(me.id) };
+});
+/** Relatório de uma partida do meu clube (para o botão do visualizador). */
+route('GET', '/api/report', (req, url) => {
+  const me = auth(req, url);
+  const id = url.searchParams.get('match');
+  const m = inbox.list(me.id, 'report', 150).find(x => x.data.matchId === id);
+  if (!m) bad('Relatório não encontrado para esta partida.', 404);
+  return { message: m };
+});
+
+/** Vestiário: moral de cada jogador, promessas e a preleção guardada. */
+route('GET', '/api/locker', (req, url) => {
+  const me = auth(req, url);
+  LK.prune(me);
+  const L = (me.extra && me.extra.locker) || {};
+  return {
+    players: me.squad.map(id => { const e = L[id] || {}, m = LK.moralOf(me, id); return { id, moral: m, mood: LK.mood(m), bench: e.bench || 0, promise: e.promise ? e.promise.n : 0, effect: +((LK.moralMult(m) - 1) * 100).toFixed(1) }; }),
+    talk: me.extra && me.extra.talk ? me.extra.talk.style : null
+  };
+});
+route('POST', '/api/locker/reply', (req, url, body) => {
+  const me = auth(req, url);
+  const m = inbox.get(me.id, String(body.id));
+  if (!m || m.kind !== 'locker') bad('Mensagem não encontrada.', 404);
+  if (m.data.answered) bad('Você já respondeu esta mensagem.', 409);
+  if (!me.squad.includes(m.data.playerId)) bad(m.data.name + ' não é mais do seu elenco.', 409);
+  const r = LK.answer(me, m.data, String(body.option), { catalog, lineup: me.lineup.filter(Boolean) });
+  if (!r) bad('Resposta inválida.');
+  if (r.goto && r.goto.rest) { // colocar em descanso já é feito aqui
+    const rows = r.goto.rest.filter(id => me.squad.includes(id)).map(id => { const s = trainState(id); TR.setRest(s, true, Date.now(), modsOf(me)); return [id, s]; });
+    store.saveTraining(rows);
+    r.goto = null;
+  }
+  const opt = (m.data.options || []).find(o => o.key === String(body.option));
+  m.data = Object.assign({}, m.data, { answered: String(body.option), answerLabel: opt ? opt.label : '', reply: r.reply, moral: r.moral, delta: r.delta });
+  m.read = true;
+  inbox.update(me.id, m);
+  missionsDone(me, MS.progress(me, TR.dayKey(Date.now()), 'locker'));
+  save();
+  return { message: m, goto: r.goto, club: privateClub(me), unread: inbox.unread(me.id) };
+});
+/** Preleção para o próximo jogo oficial (null tira). */
+route('POST', '/api/talk', (req, url, body) => {
+  const me = auth(req, url);
+  if (body.style == null) { if (me.extra) delete me.extra.talk; }
+  else if (!LK.setTalk(me, String(body.style), Date.now())) bad('Preleção inválida.');
+  save();
+  return { club: privateClub(me) };
+});
+
+const dmLimit = new CH.RateLimiter(5, 10000);
+/** Conversas com outros técnicos: uma por clube, com a última mensagem e quantas não li. */
+route('GET', '/api/dm', (req, url) => {
+  const me = auth(req, url);
+  const withId = url.searchParams.get('with');
+  const all = inbox.list(me.id, 'dm', 150);
+  if (withId) return { with: clubInfo(withId), messages: all.filter(m => m.data.with === withId).reverse() };
+  const threads = new Map();
+  for (const m of all) { // mais novas primeiro
+    const t = threads.get(m.data.with) || { with: clubInfo(m.data.with), last: m, unread: 0 };
+    if (!m.read) t.unread++;
+    threads.set(m.data.with, t);
+  }
+  return { threads: [...threads.values()] };
+});
+route('POST', '/api/dm', (req, url, body) => {
+  const me = auth(req, url);
+  const to = db.clubs[String(body.to)];
+  if (!to || to.id === me.id) bad('Escolha outro clube.');
+  const text = CH.clean(body.text);
+  if (!text) bad('Escreva uma mensagem.');
+  if (!dmLimit.allow(me.id)) bad('Calma! Você está mandando mensagens rápido demais.', 429);
+  const mine = inbox.add(me.id, 'dm', { with: to.id, from: me.id, text }, { read: true, silent: true });
+  inbox.add(to.id, 'dm', { with: me.id, from: me.id, text });
+  notify(to.id, { title: '💬 ' + me.name + ' (' + me.manager + ')', body: text, url: '/?dm=' + me.id, tag: 'dm-' + me.id });
+  missionsDone(me, MS.progress(me, TR.dayKey(Date.now()), 'dm'));
+  save();
+  return { message: mine };
+});
+
+/* ---------- missões, base, jornal ---------- */
+route('GET', '/api/missions', (req, url) => {
+  const me = auth(req, url);
+  const now = Date.now(), day = TR.dayKey(now);
+  const list = MS.view(me, day);
+  const goals = Object.values(db.leagues).filter(l => l.members.includes(me.id) && l.status === 'running' && l.extra && l.extra.goals && l.extra.goals[me.id])
+    .map(l => ({ league: l.name, id: l.id, text: l.extra.goals[me.id].text, prize: MS.GOAL_PRIZE }));
+  save(); // o sorteio das missões do dia fica gravado
+  return { day, missions: list, goals, resetsAt: Math.floor((now - SC.TZ) / 864e5 + 1) * 864e5 + SC.TZ };
+});
+
+route('GET', '/api/academy', (req, url) => {
+  const me = auth(req, url);
+  const now = Date.now();
+  return Object.assign(AC.list(me, now, FAC.levelOf(me.facilities, 'ct')), { squad: me.squad.length, squadMax: R.SQUAD_MAX });
+});
+route('POST', '/api/academy/sign', (req, url, body) => {
+  const me = auth(req, url);
+  const now = Date.now(), ct = FAC.levelOf(me.facilities, 'ct');
+  const cand = AC.list(me, now, ct).players.find(p => p.id === String(body.id));
+  if (!cand) bad('Essa promessa não está mais na base.', 404);
+  if (me.squad.length >= R.SQUAD_MAX) bad('Elenco cheio (máx. ' + R.SQUAD_MAX + ').');
+  if (cand.value > me.budget) bad('Saldo insuficiente (preço: ' + millions(cand.value) + ').', 402);
+  const p = catalog.add(AC.sign(me, cand.id, now, ct)); // vira jogador do catálogo (gravado como os importados)
+  me.squad.push(p.id);
+  me.budget -= cand.value;
+  arrived(me, p, true); // a promessa da base sempre se apresenta
+  save();
+  pushAll('market', { id: p.id });
+  return { club: privateClub(me), player: Object.assign({}, p, { owner: ownerTag(p.id) }) };
+});
+
+let newsCache = { at: 0, data: null };
+route('GET', '/api/news', (req, url) => {
+  const me = auth(req, url);
+  const now = Date.now();
+  const seen = revealedMatches(); // o que ainda passa ao vivo não vira notícia antes do apito final
+  const key = seen.length + '|' + (seen.length ? seen[seen.length - 1].id : '');
+  if (!newsCache.data || newsCache.key !== key || now - newsCache.at > 20000) newsCache = { at: now, key, data: { headlines: NW.headlines(seen, now), team: NW.teamOfWeek(seen, now) } };
+  // próximo jogo marcado do meu clube e jogos ao vivo agora
+  const mine = [], live = [];
+  for (const l of Object.values(db.leagues)) {
+    if (l.status !== 'running' || !l.members.includes(me.id)) continue;
+    for (const f of l.fixtures) {
+      if (!f.score && f.at && (f.home === me.id || f.away === me.id)) mine.push({ league: l.name, leagueId: l.id, fixtureId: f.id, stage: f.stage, at: f.at, atLabel: SC.label(f.at),
+        home: clubInfo(f.home), away: clubInfo(f.away), myBet: f.extra && f.extra.bets && f.extra.bets[me.id] ? f.extra.bets[me.id] : null, classic: NW.isClassic(db.matches, f.home, f.away) });
+      if (f.matchId && unrevealed(f.matchId)) live.push({ matchId: f.matchId, league: l.name, stage: f.stage, home: clubInfo(f.home).name, away: clubInfo(f.away).name });
+    }
+  }
+  mine.sort((a, b) => a.at - b.at);
+  return Object.assign({}, newsCache.data, { next: mine[0] || null, live });
+});
+
+/* ---------- notificações no celular ---------- */
+route('GET', '/api/push/key', () => ({ key: pushSvc.publicKey() }));
+route('POST', '/api/push/subscribe', (req, url, body) => {
+  const me = auth(req, url);
+  if (!pushSvc.add(me.id, body.subscription)) bad('Inscrição inválida.');
+  return { ok: true };
+});
+route('POST', '/api/push/unsubscribe', (req, url, body) => {
+  auth(req, url);
+  if (body.endpoint) pushSvc.remove(String(body.endpoint));
+  return { ok: true };
+});
+route('POST', '/api/push/test', (req, url) => {
+  const me = auth(req, url);
+  notify(me.id, { title: '🔔 Notificações ligadas', body: 'Você vai saber dos seus jogos, resultados e mensagens mesmo com o jogo fechado.' }, true);
+  return { ok: true };
 });
 
 /* ---------- busca de jogadores (Wikidata por padrão; Sofascore se SOFASCORE_BASE estiver configurado) ---------- */
@@ -1116,7 +1713,13 @@ async function boot() {
   const owned = new Set(Object.values(db.clubs).flatMap(c => c.squad));
   catalog = load({ imported: await store.loadImported(), persist: p => store.saveImported(p), keep: owned, form: await store.loadForm(), train: await store.loadTraining() });
   for (const r of await store.loadStats()) pstats.set(r.player_id + '|' + r.club_id, r);
-  XC = createExchange({ db, catalog, R, save, push, pushAll, beforeMove: id => settleFitness([id]) });
+  XC = createExchange({ db, catalog, R, save, push: pushNote, pushAll, beforeMove: id => settleFitness([id]),
+    afterGive: (club, id) => { const p = catalog.playerById.get(id); if (p) arrived(club, p); } });
+  try { await inbox.load(); } catch (e) { console.error('[caixa de entrada] não carregou (a tabela messages existe?):', e.message); }
+  try { await pushSvc.init(); } catch (e) { console.error('[notificações] desligadas:', e.message); }
+  for (const l of Object.values(db.leagues)) if (l.status === 'running') SC.assign(l, Date.now()); // agenda nova, rodada nova de copa...
+  runScheduler(); // jogos marcados que venceram enquanto o servidor estava desligado
+  setInterval(runScheduler, SCHEDULER_MS);
   // jogadores importados por outros meios (ex.: carga em massa) entram no catálogo sem reiniciar
   let since = new Date().toISOString();
   setInterval(async () => {

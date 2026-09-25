@@ -1,7 +1,7 @@
 /*
  * Zera a temporada para um recomeço justo: todos os clubes voltam ao saldo inicial, sem jogadores, técnico, escalação,
- * pontos nem campanha; somem partidas, ligas, trocas, a "forma" dos jogadores, o treino/condição física e as instalações. As CONTAS (nome do clube, senha, login com
- * Google e sessões) são mantidas, então ninguém precisa se cadastrar de novo. O catálogo de jogadores importados não muda.
+ * pontos nem campanha; somem partidas, ligas, trocas, a "forma" dos jogadores, o treino/condição física, as instalações, o vestiário, as missões e
+ * a caixa de entrada. Ficam a sala de troféus (histórico) e as CONTAS (nome do clube, senha, login com Google e sessões), então ninguém precisa se cadastrar de novo. O catálogo de jogadores importados não muda.
  *
  * Antes de apagar, grava um backup em data/backup-temporada-<data>-<hora>.json (nunca sobrescreve um anterior).
  * Uso:  node scripts/reset-season.js --yes [--drop="Clube A,Clube B"]      (--drop remove clubes inteiros, ex.: de teste)
@@ -12,7 +12,7 @@ const path = require('path');
 const { createStore } = require('../server/store');
 const R = require('../server/rules');
 
-const TABLES = ['clubs', 'club_players', 'matches', 'leagues', 'league_members', 'league_fixtures', 'trades', 'player_form', 'player_stats', 'player_training'];
+const TABLES = ['clubs', 'club_players', 'matches', 'leagues', 'league_members', 'league_fixtures', 'trades', 'player_form', 'player_stats', 'player_training', 'messages'];
 
 (async () => {
   if (!process.argv.includes('--yes')) { console.error('Isto apaga partidas, ligas, trocas, elencos e saldos. Confirme com --yes.'); process.exit(1); }
@@ -36,7 +36,7 @@ const TABLES = ['clubs', 'club_players', 'matches', 'leagues', 'league_members',
   console.log('Backup: ' + file + ' (' + TABLES.map(t => t + ' ' + backup[t].length).join(', ') + ')');
 
   const del = async (t, col) => { const { error } = await sb.from(t).delete().not(col, 'is', null); if (error) throw new Error('apagar ' + t + ': ' + error.message); };
-  for (const [t, col] of [['league_fixtures', 'id'], ['league_members', 'league_id'], ['leagues', 'id'], ['trades', 'id'], ['matches', 'id'], ['club_players', 'club_id'], ['player_form', 'player_id'], ['player_stats', 'player_id'], ['player_training', 'player_id']]) await del(t, col);
+  for (const [t, col] of [['league_fixtures', 'id'], ['league_members', 'league_id'], ['leagues', 'id'], ['trades', 'id'], ['matches', 'id'], ['club_players', 'club_id'], ['player_form', 'player_id'], ['player_stats', 'player_id'], ['player_training', 'player_id'], ['messages', 'id']]) await del(t, col);
 
   const dropIds = backup.clubs.filter(c => drop.includes(c.name.toLowerCase())).map(c => c.id);
   if (dropIds.length) { const { error } = await sb.from('clubs').delete().in('id', dropIds); if (error) throw new Error(error.message); console.log('Clubes removidos: ' + drop.join(', ')); }
@@ -46,6 +46,10 @@ const TABLES = ['clubs', 'club_players', 'matches', 'leagues', 'league_members',
     points: 0, played: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0
   }).not('id', 'is', null);
   if (error) throw new Error('clubes: ' + error.message);
+  for (const c of backup.clubs.filter(x => !dropIds.includes(x.id))) { // vestiário, missões e base zeram; a sala de troféus fica
+    const r = await sb.from('clubs').update({ extra: { trophies: (c.extra && c.extra.trophies) || [] } }).eq('id', c.id);
+    if (r.error) throw new Error('clubes (extra): ' + r.error.message);
+  }
 
   const left = (await sb.from('clubs').select('name, budget, points')).data;
   console.log('Clubes zerados (' + left.length + '): ' + left.map(c => c.name + ' € ' + c.budget / 1e6 + ' M').join(' · '));

@@ -6,7 +6,8 @@
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const STEP = 1 / 60;
 
-  const S = { google: null, credential: null, gsiMode: 'login', token: null, me: null, meta: null, catalog: null, clubs: [], matches: [], tab: 'home', kind: 'player', shown: 60, lineup: null, formation: null };
+  const S = { google: null, credential: null, gsiMode: 'login', token: null, me: null, meta: null, catalog: null, clubs: [], matches: [], tab: 'home', kind: 'player', shown: 60, lineup: null, formation: null,
+    news: null, missions: null, ibKind: '' };
   let stream = null;
 
   /* ---------- utilidades ---------- */
@@ -32,6 +33,30 @@
   const outText = f => (f.inj ? ' · 🚑 lesionado' : f.susp ? ' · 🟥 suspenso' : '');
   const lsGet = k => { try { return localStorage.getItem(k); } catch (_) { return null; } };
   const lsSet = (k, v) => { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch (_) { /* ignora */ } };
+  /** Nota da partida (0 a 10) com cor: verde boa, amarela regular, vermelha ruim. */
+  const rateCls = r => (r >= 7.5 ? 'r-good' : r >= 6 ? 'r-mid' : 'r-bad');
+  const rateChip = r => '<b class="rate ' + rateCls(r) + '">' + r.toFixed(1).replace('.', ',') + '</b>';
+  const moralCls = m => (m >= 80 ? 'm-top' : m >= 60 ? 'm-good' : m >= 40 ? 'm-mid' : 'm-low');
+  const moralOf = id => (S.me && S.me.moral && S.me.moral[id] != null ? S.me.moral[id] : 60);
+  const MOOD = [[80, '😄'], [60, '🙂'], [40, '😐'], [25, '😕'], [0, '😠']];
+  const moodIcon = m => MOOD.find(x => m >= x[0])[1];
+  const ago = at => {
+    const s = Math.max(0, (Date.now() - at) / 1000);
+    if (s < 60) return 'agora';
+    if (s < 3600) return Math.floor(s / 60) + ' min';
+    if (s < 86400) return Math.floor(s / 3600) + ' h';
+    return new Date(at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+  };
+  const until = at => { // "em 2 h 10 min"
+    const m = Math.max(0, Math.round((at - Date.now()) / 60000));
+    if (m < 1) return 'agora';
+    if (m < 60) return 'em ' + m + ' min';
+    const h = Math.floor(m / 60);
+    if (h < 24) return 'em ' + h + ' h' + (m % 60 ? ' ' + (m % 60) + ' min' : '');
+    return 'em ' + Math.round(h / 24) + (Math.round(h / 24) > 1 ? ' dias' : ' dia');
+  };
+  const fmtAt = at => new Date(at).toLocaleString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }).replace('.', '');
+  const crestHtml = (name, color, cls) => '<span class="crest ' + (cls || 'xs') + '" style="background:' + esc(color || '#98a2b3') + ';color:' + textColor(color || '#98a2b3') + '">' + esc(String(name || '').split(' ').filter(Boolean).map(w => w[0]).join('').slice(0, 3).toUpperCase()) + '</span>';
 
   async function api(method, path, body) {
     let res;
@@ -239,8 +264,55 @@
     $('auth').hidden = true;
     $('game').hidden = false;
     connect();
+    // atalhos vindos de uma notificação no celular: ?report=<partida> ou ?dm=<clube>
+    const q = new URLSearchParams(location.search), qr = q.get('report'), qd = q.get('dm');
+    if (qr || qd) history.replaceState(null, '', location.pathname);
+    if (qd) { S.ibKind = 'dm'; dmWith = qd; S.tab = 'inbox'; }
     showTab(S.tab);
+    if (qr) api('GET', '/api/report?match=' + encodeURIComponent(qr)).then(r => openReport(r.message)).catch(() => showPendingReports());
+    else showPendingReports();
+    pushState();
   }
+
+  /* ---------- notificações no celular (Web Push; no iPhone, só com o app instalado na Tela de Início) ---------- */
+  const pushOk = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+  const standalone = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const b64 = s => { const raw = atob((s + '='.repeat((4 - s.length % 4) % 4)).replace(/-/g, '+').replace(/_/g, '/')); return Uint8Array.from(raw, c => c.charCodeAt(0)); };
+  const pushSub = async () => (await navigator.serviceWorker.ready).pushManager.getSubscription();
+  async function pushState() {
+    const b = $('btnPush');
+    if (!S.meta || !S.meta.push || !pushOk()) {
+      b.hidden = !(isIOS && !standalone());
+      b.dataset.mode = 'ios'; b.textContent = '🔔 Notificações: instale o app na Tela de Início';
+      return;
+    }
+    let sub = null;
+    try { sub = await Promise.race([pushSub(), sleep(3000).then(() => null)]); } catch (_) { /* sem service worker */ }
+    b.hidden = false;
+    b.dataset.mode = sub ? 'on' : 'off';
+    b.textContent = sub ? '🔔 Notificações no celular: ligadas' : '🔕 Ativar notificações no celular';
+  }
+  $('btnPush').onclick = async () => {
+    setAcct(false);
+    const b = $('btnPush');
+    if (b.dataset.mode === 'ios') return alert('No iPhone e no iPad, as notificações só funcionam com o jogo instalado: no Safari, toque em Compartilhar → "Adicionar à Tela de Início", abra o jogo pelo ícone e ative aqui.');
+    try {
+      if (b.dataset.mode === 'on') {
+        const sub = await pushSub();
+        if (sub) { await api('POST', '/api/push/unsubscribe', { endpoint: sub.endpoint }); await sub.unsubscribe(); }
+        toast('🔕 Notificações desligadas neste aparelho.');
+      } else {
+        if (await Notification.requestPermission() !== 'granted') { toast('O navegador bloqueou as notificações. Libere nas configurações do site e tente de novo.', { err: true }); return pushState(); }
+        const { key } = await api('GET', '/api/push/key');
+        const sub = await (await navigator.serviceWorker.ready).pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64(key) });
+        await api('POST', '/api/push/subscribe', { subscription: sub.toJSON() });
+        await api('POST', '/api/push/test');
+        toast('🔔 Notificações ligadas! Você fica sabendo dos jogos marcados, resultados e mensagens mesmo com o jogo fechado.');
+      }
+    } catch (e) { fail(e); }
+    pushState();
+  };
 
   async function loadMe() {
     S.me = (await api('GET', '/api/me')).club;
@@ -271,7 +343,21 @@
     $('tbCoach').textContent = c ? c.short : m.coach ? '…' : '—';
     $('tbSource').textContent = S.meta.source === 'sofascore' ? 'Sofascore' : 'Catálogo local';
     renderAccount();
+    renderBadges();
   }
+
+  /** Mensagens não lidas: sino do topo, item "Mensagens" do menu e o "Menu" da barra de baixo. */
+  function renderBadges() {
+    const u = (S.me && S.me.unread) || { total: 0 };
+    for (const id of ['tbUnread', 'nvUnread']) { const el = $(id); el.hidden = !u.total; el.textContent = u.total > 99 ? '99+' : String(u.total); }
+    $('bnMore').classList.toggle('has-new', u.total > 0);
+    $('btnInbox').setAttribute('aria-label', u.total ? 'Mensagens (' + u.total + ' não lidas)' : 'Mensagens');
+    for (const b of $('ibFilters').children) {
+      const n = b.dataset.k ? u[b.dataset.k] || 0 : 0;
+      b.dataset.n = n || '';
+    }
+  }
+  function setUnread(u) { if (S.me && u) { S.me.unread = u; renderBadges(); } }
 
   /* ---------- tempo real ---------- */
   function connect() {
@@ -344,6 +430,49 @@
       await loadMe(); await loadCatalog();
       openMatch(d.id);
     });
+    stream.addEventListener('inbox', ev => {
+      const d = JSON.parse(ev.data);
+      setUnread(d.unread);
+      if (d.msg) onNewMessage(d.msg);
+      if (S.tab === 'inbox' && d.msg) loadInbox(true);
+    });
+    stream.addEventListener('live', ev => { // jogo marcado começando: transmissão ao vivo para a liga
+      const d = JSON.parse(ev.data);
+      const t = toast('🔴 <b>Ao vivo' + (d.mine ? ': seu jogo começou!' : '') + '</b><br>' + esc(d.home) + ' x ' + esc(d.away) + '<br><small>' + esc(d.league + ' · ' + d.stage) + '</small>' +
+        '<div class="acts"><button class="btn primary sm" type="button">Assistir ao vivo</button></div>', { sticky: true });
+      t.onclick = e => { if (e.target.closest('button')) { t.remove(); openMatch(d.matchId); } };
+      setTimeout(() => t.remove(), 9 * 60000);
+      if (S.tab === 'home') loadHome();
+      if (S.tab === 'leagues' && lgOpen) openLeague(lgOpen, true);
+    });
+  }
+
+  /** Mensagem nova chegando com o jogo aberto: aviso curto com atalho (relatório abre na janela). */
+  function onNewMessage(m) {
+    const d = m.data || {};
+    if (m.kind === 'report') {
+      if (!$('viewer').hidden && rec && rec.id === d.matchId) { pendingReport = m; $('vReport').hidden = false; return; } // assistindo este jogo: abre ao fechar
+      const t = toast('📋 <b>Relatório da partida pronto</b><br>' + esc(d.home.name + ' ' + d.score[0] + ' x ' + d.score[1] + ' ' + d.away.name) +
+        '<div class="acts"><button class="btn primary sm" type="button">Ver relatório</button></div>', { sticky: true });
+      t.onclick = e => { if (e.target.closest('button')) { t.remove(); openReport(m); } };
+      setTimeout(() => t.remove(), 60000);
+      if (S.tab === 'home') loadHome();
+      return;
+    }
+    if (!$('viewer').hidden && m.kind !== 'dm') return; // durante a partida, só conversa de técnico interrompe
+    let html;
+    if (m.kind === 'locker') html = '👕 <b>' + esc(d.short || d.name) + '</b>: ' + esc(d.text);
+    else if (m.kind === 'aux') html = '🧠 <b>Auxiliar técnico</b>: ' + esc(d.title);
+    else if (m.kind === 'board') html = esc(d.icon || '🏛️') + ' <b>' + esc(d.title) + '</b><br>' + esc(String(d.text).split('\n')[0]);
+    else if (m.kind === 'dm') {
+      if (S.tab === 'inbox' && S.ibKind === 'dm' && dmWith === d.with) return;
+      const c = S.clubs.find(x => x.id === d.with);
+      html = '💬 <b>' + esc(c ? c.name : 'Técnico') + '</b>: ' + esc(d.text);
+    }
+    if (!html) return;
+    const kind = m.kind;
+    const t = toast(html + '<div class="acts"><button class="btn sm" type="button">' + (kind === 'locker' && d.options && d.options.length ? 'Responder' : 'Abrir') + '</button></div>');
+    t.onclick = e => { if (e.target.closest('button')) { t.remove(); openInbox(kind, kind === 'dm' ? d.with : null); } };
   }
 
   /* Celular: com a tela apagada ou em outro app, a conexão em tempo real cai (no iOS, sem reconectar sozinha). Ao voltar, reabre e atualiza. */
@@ -381,7 +510,10 @@
   document.addEventListener('keydown', e => { if (e.key === 'Escape') { setNav(false); setAcct(false); } });
   $('game').addEventListener('click', e => {
     const b = e.target.closest('[data-tab]');
-    if (b) { e.preventDefault(); showTab(b.dataset.tab); }
+    if (!b) return;
+    e.preventDefault();
+    if (b.dataset.tab === 'inbox' && b.dataset.ibk != null) S.ibKind = b.dataset.ibk;
+    showTab(b.dataset.tab);
   });
   // busca do topo: procura no mercado
   $('gSearch').addEventListener('input', () => {
@@ -398,10 +530,13 @@
     setNav(false); setAcct(false);
     if (t !== 'market') $('gSearch').value = '';
     if (changed) window.scrollTo(0, 0);
-    for (const id of ['home', 'market', 'squad', 'lineup', 'train', 'facil', 'clubs', 'leagues', 'stats', 'exch', 'matches']) $('tab-' + id).hidden = id !== t;
+    for (const id of ['home', 'inbox', 'market', 'squad', 'lineup', 'locker', 'train', 'facil', 'clubs', 'leagues', 'stats', 'exch', 'matches']) $('tab-' + id).hidden = id !== t;
+    $('btnInbox').classList.toggle('on', t === 'inbox');
     if (t === 'home') loadHome();
+    if (t === 'inbox') loadInbox();
+    if (t === 'locker') loadLocker();
     if (t === 'market') renderMarket();
-    if (t === 'squad') renderSquad();
+    if (t === 'squad') { renderSquad(); loadAcademy(); }
     if (t === 'lineup') renderLineup();
     if (t === 'train') openTrain();
     if (t === 'facil') renderFacil();
@@ -418,10 +553,68 @@
   async function loadHome() {
     renderHome();
     try {
-      const [c, m] = await Promise.all([api('GET', '/api/clubs'), api('GET', '/api/matches')]);
-      S.clubs = c.clubs; S.matches = m.matches;
+      const [c, m, n, ms] = await Promise.all([api('GET', '/api/clubs'), api('GET', '/api/matches'), api('GET', '/api/news'), api('GET', '/api/missions')]);
+      S.clubs = c.clubs; S.matches = m.matches; S.news = n; S.missions = ms;
     } catch (_) { return; } // o resumo já aparece com o que há; o próximo evento atualiza
     if (S.tab === 'home') renderHome();
+  }
+
+  /** Início: jogo marcado com contagem, bolão e preleção; missões; jornal; seleção da rodada e troféus. */
+  function renderHomeExtra() {
+    const N = S.news, me = S.me;
+    $('hmLive').innerHTML = N && N.live && N.live.length ? '<div class="live-strip">' + N.live.map(l => '<button class="live-item" data-live="' + esc(l.matchId) + '" type="button"><span class="live-dot"></span><b>AO VIVO</b> ' + esc(l.home) + ' x ' + esc(l.away) + '<small>' + esc(l.league + ' · ' + l.stage) + '</small><span class="btn primary sm">Assistir</span></button>').join('') + '</div>' : '';
+    const nx = N && N.next;
+    if (!nx) {
+      $('hmNext').innerHTML = '<div class="card-head"><h2><svg class="ico hico"><use href="#i-calendar"/></svg>Próximo jogo marcado</h2></div><div class="empty">' + ico('calendar') +
+        '<span>Nenhum jogo marcado. Numa liga com agenda, os jogos acontecem sozinhos no horário, sem precisar desafiar ninguém.</span><button class="btn primary sm" data-tab="leagues" type="button">Ligas e copas</button></div>';
+    } else {
+      const home = nx.home.id === me.id, opp = home ? nx.away : nx.home;
+      const talk = me.talk && S.meta.pre[me.talk];
+      $('hmNext').innerHTML = '<div class="card-head"><h2><svg class="ico hico"><use href="#i-calendar"/></svg>Próximo jogo</h2><span class="tag ok">' + esc(nx.league) + '</span></div>' +
+        '<div class="nx-teams"><div class="nx-t">' + crestHtml(nx.home.name, nx.home.color, 'sm') + '<b>' + esc(nx.home.name) + '</b></div><div class="nx-vs"><b class="nx-count" data-at="' + nx.at + '">' + until(nx.at) + '</b><small>' + esc(nx.atLabel) + '</small></div><div class="nx-t">' + crestHtml(nx.away.name, nx.away.color, 'sm') + '<b>' + esc(nx.away.name) + '</b></div></div>' +
+        '<div class="nx-meta"><span>' + esc(nx.stage) + ' · ' + (home ? 'em casa' : 'fora') + '</span>' + (nx.classic ? '<span class="tag hot">🔥 Clássico: bilheteria em dobro</span>' : '') + '</div>' +
+        '<div class="nx-acts">' +
+        '<div class="nx-box"><small>Preleção</small><b>' + (talk ? esc(talk.label) : 'não feita') + '</b><button class="btn sm" data-tab="locker" type="button">' + (talk ? 'Trocar' : 'Fazer preleção') + '</button></div>' +
+        '<div class="nx-box"><small>Bolão (' + esc(opp.name) + ')</small><b>' + (nx.myBet ? nx.myBet[0] + ' x ' + nx.myBet[1] : 'sem palpite') + '</b><button class="btn sm" data-bet-league="' + esc(nx.leagueId) + '" type="button">Palpitar</button></div>' +
+        '<div class="nx-box"><small>Escalação</small><b>' + me.lineup.filter(Boolean).length + '/11</b><button class="btn sm" data-tab="lineup" type="button">Revisar</button></div></div>';
+    }
+    const M = S.missions;
+    $('hmMissReset').textContent = M ? 'renovam ' + until(M.resetsAt) : '';
+    $('hmMissions').innerHTML = !M ? '<p class="muted">Carregando…</p>' : '<div class="miss-list">' + M.missions.map(m => '<div class="miss' + (m.done ? ' done' : '') + '"><span class="miss-ico">' + (m.done ? '✅' : '🎯') + '</span><div><b>' + esc(m.text) + '</b><div class="miss-bar"><i style="width:' + Math.round(m.n / m.target * 100) + '%"></i></div><small>' + m.n + '/' + m.target + ' · prêmio ' + money(m.prize) + '</small></div></div>').join('') + '</div>' +
+      (M.goals && M.goals.length ? '<div class="goal-list">' + M.goals.map(g => '<div class="goal-row">🏛️ <span><b>Diretoria · ' + esc(g.league) + ':</b> ' + esc(g.text) + ' <small class="muted">(bônus ' + money(g.prize) + ')</small></span></div>').join('') + '</div>' : '');
+    const H = N && N.headlines || [];
+    $('hmNews').innerHTML = H.length ? '<div class="news-list">' + H.slice(0, 6).map(h => '<button class="news" data-w="' + esc(h.matchId) + '" type="button"><span class="news-ico">' + esc(h.icon) + '</span><span><b>' + esc(h.title) + '</b><small>' + esc(h.text) + '</small><em>' + esc(h.tag) + ' · ' + ago(h.at) + '</em></span></button>').join('') + '</div>'
+      : '<div class="empty">' + ico('news') + '<span>Sem manchetes nesta semana. Os jogos oficiais viram notícia aqui.</span></div>';
+    const T = N && N.team || [];
+    $('hmTeam').innerHTML = T.length ? '<div class="tow">' + T.map(p => '<div class="tow-p"><span class="pos ' + p.role + ' sm">' + ({ GK: 'GOL', DEF: 'DEF', MID: 'MEI', FWD: 'ATA' }[p.role] || p.role) + '</span><a href="#" class="plink" data-player="' + esc(p.id) + '">' + esc(p.name) + '</a><small>' + esc(p.club) + '</small>' + rateChip(p.rating) + '</div>').join('') + '</div>'
+      : '<p class="muted">Ainda sem jogos oficiais nesta semana.</p>';
+    const TR_ = (me.trophies || []).slice().reverse();
+    const TI = { league: '🏆', cup: '🏆', runner: '🥈', scorer: '👟', best: '⭐' };
+    $('hmTrophies').innerHTML = TR_.length ? '<div class="troph">' + TR_.slice(0, 8).map(t => '<div class="tro"><span>' + (TI[t.kind] || '🏅') + '</span><b>' + esc(t.title) + '</b><small>' + new Date(t.at).toLocaleDateString('pt-BR') + '</small></div>').join('') + '</div>'
+      : '<p class="muted small">Ganhe ligas e copas (ou tenha o artilheiro e o craque da competição) para encher a sala de troféus.</p>';
+  }
+  $('hmLive').onclick = e => { const b = e.target.closest('[data-live]'); if (b) openMatch(b.dataset.live); };
+  $('hmNews').onclick = e => { const b = e.target.closest('[data-w]'); if (b) openMatch(b.dataset.w); };
+  $('hmNext').onclick = e => {
+    const b = e.target.closest('[data-bet-league]');
+    if (!b || !S.news || !S.news.next) return;
+    const nx = S.news.next;
+    betPrompt(nx.leagueId, nx.fixtureId, nx.home.name, nx.away.name, nx.myBet).then(ok => { if (ok) loadHome(); });
+  };
+  setInterval(() => { for (const el of document.querySelectorAll('.nx-count[data-at]')) el.textContent = until(+el.dataset.at); }, 30000);
+
+  /** Palpite do bolão (placar). Devolve true se salvou. */
+  async function betPrompt(leagueId, fixtureId, home, away, cur) {
+    const v = prompt('Bolão: seu palpite para ' + home + ' x ' + away + ' (ex.: 2x1).\nPlacar exato vale 3 pontos e ' + money(3e6) + '; acertar o vencedor (ou o empate), 1 ponto e ' + money(1e6) + '.', cur ? cur[0] + 'x' + cur[1] : '');
+    if (v == null) return false;
+    const m = /^\s*(\d{1,2})\s*[x×:-]\s*(\d{1,2})\s*$/i.exec(v);
+    if (!m) { toast('Palpite inválido. Use o formato 2x1.', { err: true }); return false; }
+    try {
+      const r = await api('POST', '/api/leagues/bet', { id: leagueId, fixtureId, score: [+m[1], +m[2]] });
+      S.me = r.club; renderTop();
+      toast('🎯 Palpite registrado: ' + esc(home) + ' ' + m[1] + ' x ' + m[2] + ' ' + esc(away) + '.');
+      return true;
+    } catch (e) { fail(e); return false; }
   }
   function renderHome() {
     const me = S.me, sq = me.squad.map(player).filter(Boolean);
@@ -445,8 +638,8 @@
     $('hmGames').innerHTML = mine.length
       ? '<div class="glist"><div class="ghead"><span class="g-date">Data</span><span class="g-opp">Adversário</span><span class="g-comp">Competição</span><span class="g-res">Resultado</span></div>' + mine.map(m => {
         const home = m.home.id === me.id, opp = home ? m.away : m.home, oc = opp.id && clubOf(opp.id);
-        const gf = m.score[home ? 0 : 1], ga = m.score[home ? 1 : 0];
-        let r = gf > ga ? 'w' : gf < ga ? 'l' : 'd';
+        const gf = m.live ? 0 : m.score[home ? 0 : 1], ga = m.live ? 0 : m.score[home ? 1 : 0];
+        let r = m.live ? 'live' : gf > ga ? 'w' : gf < ga ? 'l' : 'd';
         if (r === 'd' && m.pens) r = m.pens[home ? 0 : 1] > m.pens[home ? 1 : 0] ? 'w' : 'l';
         const color = oc ? oc.color : '#98a2b3';
         const initials = opp.name.split(' ').filter(Boolean).map(w => w[0]).join('').slice(0, 3).toUpperCase();
@@ -454,16 +647,284 @@
           '<span class="g-meta"><span class="g-date">' + new Date(m.at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) + '</span>' +
           '<span class="g-comp">' + esc(m.league ? m.league.name : m.cpu ? 'Teste (CPU)' : 'Amistoso') + '</span></span>' +
           '<span class="g-opp"><span class="crest xs" style="background:' + esc(color) + ';color:' + textColor(color) + '">' + esc(initials) + '</span><span>' + esc(opp.name) + '</span><small>' + (home ? 'casa' : 'fora') + '</small></span>' +
-          '<span class="g-res ' + r + '" title="' + ({ w: 'Vitória', d: 'Empate', l: 'Derrota' }[r]) + '"><i></i>' + gf + ' - ' + ga + (m.pens ? ' <small>(pên.)</small>' : '') + '</span></button>';
+          (m.live ? '<span class="g-res live" title="Ao vivo"><i></i>AO VIVO</span></button>'
+            : '<span class="g-res ' + r + '" title="' + ({ w: 'Vitória', d: 'Empate', l: 'Derrota' }[r]) + '"><i></i>' + gf + ' - ' + ga + (m.pens ? ' <small>(pên.)</small>' : '') + '</span></button>');
       }).join('') + '</div>'
       : '<div class="empty">' + ico('ball') + '<span>Nenhuma partida ainda. Desafie um técnico online ou teste a escalação contra a CPU.</span><button class="btn primary sm" data-tab="clubs" type="button">Jogar agora</button></div>';
 
     const stars = sq.slice().sort((a, b) => b.ovr - a.ovr).slice(0, 5);
     $('hmStars').innerHTML = stars.length
-      ? '<div class="slist">' + stars.map(p => '<div class="srow">' + avatar(p) + '<div class="s-id"><a href="#" class="plink" data-player="' + esc(p.id) + '">' + esc(p.name) + '</a><small>' + (ROLE_NAME[p.role] || p.pos) + ' · ' + esc(p.pos) + '</small></div><b class="s-ovr">' + p.ovr + formTag(p) + '</b></div>').join('') + '</div>'
+      ? '<div class="slist">' + stars.map(p => '<div class="srow">' + avatar(p) + '<div class="s-id"><a href="#" class="plink" data-player="' + esc(p.id) + '">' + esc(p.name) + '</a><small>' + (ROLE_NAME[p.role] || p.pos) + ' · ' + esc(p.pos) + ' · ' + moodIcon(moralOf(p.id)) + ' moral ' + moralOf(p.id) + '</small></div><b class="s-ovr">' + p.ovr + formTag(p) + '</b></div>').join('') + '</div>'
       : '<div class="empty">' + ico('users') + '<span>Seu elenco está vazio. Contrate jogadores no mercado para montar o time.</span><button class="btn primary sm" data-tab="market" type="button">Ir ao mercado</button></div>';
+    renderHomeExtra();
   }
   $('hmGames').onclick = e => { const b = e.target.closest('[data-w]'); if (b) openMatch(b.dataset.w); };
+
+  /* ---------- mensagens: relatórios, vestiário, auxiliar, diretoria e técnicos ---------- */
+  let ibData = [], dmWith = null, pendingReport = null;
+  const KIND_ICON = { report: '📋', locker: '👕', aux: '🧠', board: '🏛️', dm: '💬' };
+  function openInbox(kind, withId) {
+    S.ibKind = kind || '';
+    if (withId) dmWith = withId;
+    showTab('inbox');
+  }
+  async function loadInbox(quiet) {
+    for (const b of $('ibFilters').children) b.classList.toggle('on', b.dataset.k === S.ibKind);
+    const dm = S.ibKind === 'dm';
+    $('dmBox').hidden = !dm; $('ibList').hidden = dm;
+    if (dm) return loadDm();
+    if (!quiet) $('ibList').innerHTML = '<p class="muted">Carregando…</p>';
+    try {
+      const r = await api('GET', '/api/inbox' + (S.ibKind ? '?kind=' + S.ibKind : ''));
+      ibData = r.messages.filter(m => m.kind !== 'dm' || !S.ibKind); setUnread(r.unread);
+    } catch (e) { $('ibList').innerHTML = '<p class="muted">' + esc(e.message) + '</p>'; return; }
+    renderInbox();
+    // o que só se lê (avisos, análises) fica lido ao abrir a lista; relatório e mensagem com resposta, ao abrir/responder
+    const ids = ibData.filter(m => !m.read && (m.kind === 'board' || m.kind === 'aux' || (m.kind === 'locker' && !(m.data.options || []).length))).map(m => m.id);
+    if (ids.length) api('POST', '/api/inbox/read', { ids }).then(r => setUnread(r.unread)).catch(() => {});
+  }
+  function msgCard(m) {
+    const d = m.data || {}, unread = !m.read ? ' unread' : '';
+    const time = '<small class="ib-time">' + ago(m.at) + '</small>';
+    if (m.kind === 'report') {
+      const res = { w: 'Vitória', d: 'Empate', l: 'Derrota' }[d.result];
+      return '<div class="ib' + unread + '" data-rep="' + esc(m.id) + '"><span class="ib-ico r-' + d.result + '">📋</span><div class="ib-body"><div class="ib-top"><b>Relatório: ' + esc(d.home.name) + ' ' + d.score[0] + ' x ' + d.score[1] + ' ' + esc(d.away.name) + '</b>' + time + '</div>' +
+        '<div class="ib-text">' + res + ' · ' + esc(d.comp) + (d.motm ? ' · craque: ' + esc(d.motm.name) + ' (' + String(d.motm.rating).replace('.', ',') + ')' : '') + (d.train && d.train.length ? ' · ' + d.train.length + ' precisa(m) treinar' : '') + '</div>' +
+        '<div class="ib-acts"><button class="btn primary sm" data-rep="' + esc(m.id) + '" type="button">Ver relatório</button></div></div></div>';
+    }
+    if (m.kind === 'locker') {
+      const p = player(d.playerId);
+      const opts = d.options || [];
+      const answered = d.answered ? '<div class="ib-reply"><span>Você: ' + esc(d.answerLabel || '') + '</span><span>' + esc(d.short || d.name) + ': “' + esc(d.reply || '') + '”</span>' +
+        (d.delta != null ? '<small class="' + (d.delta >= 0 ? 'up' : 'down') + '">moral ' + (d.delta >= 0 ? '+' : '') + d.delta + ' → ' + d.moral + '</small>' : '') + '</div>' : '';
+      const acts = !d.answered && opts.length ? '<div class="ib-opts">' + opts.map(o => '<button class="btn sm' + (o === opts[0] ? ' primary' : '') + '" data-reply="' + esc(m.id) + '" data-opt="' + esc(o.key) + '" title="' + esc(o.hint || '') + '" type="button">' + esc(o.label) + '</button>').join('') + '</div>' : '';
+      return '<div class="ib' + unread + '"><span class="ib-ico">' + (p ? avatar(p) : '👕') + '</span><div class="ib-body"><div class="ib-top"><b>' + esc(d.name) + ' <span class="pos sm ' + ((p && p.role) || '') + '">' + esc(d.pos || '') + '</span></b>' + time + '</div>' +
+        '<div class="ib-text">“' + esc(d.text) + '”</div>' + acts + answered + '</div></div>';
+    }
+    if (m.kind === 'aux') {
+      return '<div class="ib' + unread + '"><span class="ib-ico">🧠</span><div class="ib-body"><div class="ib-top"><b>Auxiliar técnico · ' + esc(d.title) + '</b>' + time + '</div>' +
+        (d.at ? '<div class="ib-text"><b>' + esc(d.home + ' x ' + d.away) + '</b> · ' + esc(d.stage || '') + ' · ' + fmtAt(d.at) + '</div>' : '') +
+        '<div class="ib-text pre">' + esc(d.text) + '</div><div class="ib-acts"><button class="btn sm" data-tab="lineup" type="button">Escalação e instruções</button><button class="btn sm" data-tab="locker" type="button">Preleção</button></div></div></div>';
+    }
+    if (m.kind === 'board') {
+      return '<div class="ib' + unread + '"><span class="ib-ico">' + esc(d.icon || '🏛️') + '</span><div class="ib-body"><div class="ib-top"><b>' + esc(d.title) + '</b>' + time + '</div><div class="ib-text pre">' + esc(d.text) + '</div></div></div>';
+    }
+    if (m.kind === 'dm') {
+      const c = S.clubs.find(x => x.id === d.with);
+      return '<div class="ib' + unread + '" data-dm="' + esc(d.with) + '"><span class="ib-ico">💬</span><div class="ib-body"><div class="ib-top"><b>' + esc(c ? c.name : 'Técnico') + '</b>' + time + '</div><div class="ib-text">' + (d.from === S.me.id ? 'Você: ' : '') + esc(d.text) + '</div></div></div>';
+    }
+    return '';
+  }
+  function renderInbox() {
+    const empty = { '': 'Nenhuma mensagem ainda. Relatórios, vestiário, auxiliar e diretoria aparecem aqui.', report: 'Os relatórios chegam depois de cada partida oficial.', locker: 'Os jogadores falam com você depois dos jogos e quando chegam ao clube.', aux: 'Numa liga com agenda, o auxiliar analisa o adversário 3 horas antes de cada jogo.', board: 'Avisos da diretoria: missões cumpridas, metas das competições, prêmios e bolão.' };
+    $('ibList').innerHTML = ibData.length ? ibData.map(msgCard).join('') : '<div class="empty">' + ico('chat') + '<span>' + empty[S.ibKind || ''] + '</span></div>';
+  }
+  $('ibFilters').onclick = e => { const b = e.target.closest('button'); if (b) { S.ibKind = b.dataset.k; loadInbox(); } };
+  $('ibReadAll').onclick = async () => { try { setUnread((await api('POST', '/api/inbox/read', {})).unread); for (const m of ibData) m.read = true; renderInbox(); } catch (e) { fail(e); } };
+  $('ibList').onclick = async e => {
+    const rb = e.target.closest('[data-reply]');
+    if (rb) {
+      for (const b of rb.parentNode.querySelectorAll('button')) b.disabled = true;
+      try {
+        const r = await api('POST', '/api/locker/reply', { id: rb.dataset.reply, option: rb.dataset.opt });
+        S.me = r.club; renderTop(); setUnread(r.unread);
+        const i = ibData.findIndex(m => m.id === r.message.id);
+        if (i >= 0) ibData[i] = r.message;
+        renderInbox();
+        if (r.message.data.kind === 'tired' && rb.dataset.opt === 'rest') toast('😴 ' + esc(r.message.data.name) + ' está em descanso.');
+        if (r.goto) followGoto(r.goto);
+      } catch (err) { fail(err); loadInbox(true); }
+      return;
+    }
+    const rp = e.target.closest('[data-rep]');
+    if (rp) { const m = ibData.find(x => x.id === rp.dataset.rep); if (m) openReport(m); return; }
+    const dm = e.target.closest('[data-dm]');
+    if (dm) { dmWith = dm.dataset.dm; S.ibKind = 'dm'; loadInbox(); }
+  };
+  /** Resposta que leva a outra tela (treino com o jogador marcado, fisioterapia, elenco). */
+  function followGoto(g) {
+    if (g.tab === 'train') {
+      showTab('train');
+      trSel.clear();
+      for (const id of g.ids || []) trSel.add(id);
+      if (g.focus && S.meta.training.focus[g.focus]) { $('trFocus').value = g.focus; lsSet('fm-train-focus', g.focus); }
+      renderTrain();
+      toast(g.physio ? '💆 Jogador marcado: toque em Fisioterapia.' : '🏋️ Jogador marcado' + (g.focus ? ' com o foco em ' + esc(S.meta.training.focus[g.focus]) : '') + ': toque em Treinar.');
+    } else if (g.tab) showTab(g.tab);
+  }
+
+  /* conversas entre técnicos */
+  async function loadDm() {
+    const others = S.clubs.filter(c => c.id !== S.me.id);
+    if (!others.length) { try { S.clubs = (await api('GET', '/api/clubs')).clubs; } catch (_) { /* segue */ } }
+    $('dmTo').innerHTML = '<option value="">Nova conversa com…</option>' + S.clubs.filter(c => c.id !== S.me.id).map(c => '<option value="' + esc(c.id) + '">' + esc(c.name) + ' (' + esc(c.manager) + ')</option>').join('');
+    let r;
+    try { r = await api('GET', '/api/dm'); } catch (e) { $('dmThreads').innerHTML = '<p class="muted">' + esc(e.message) + '</p>'; return; }
+    $('dmThreads').innerHTML = r.threads.map(t => '<button class="dm-th' + (t.with.id === dmWith ? ' on' : '') + '" data-with="' + esc(t.with.id) + '" type="button">' + crestHtml(t.with.name, t.with.color) + '<span><b>' + esc(t.with.name) + '</b><small>' + (t.last.data.from === S.me.id ? 'Você: ' : '') + esc(t.last.data.text) + '</small></span>' + (t.unread ? '<i class="nbadge">' + t.unread + '</i>' : '') + '</button>').join('') ||
+      '<p class="muted small">Nenhuma conversa. Escolha um clube acima para negociar, combinar um jogo ou provocar.</p>';
+    if (dmWith) openThread(dmWith);
+  }
+  async function openThread(id) {
+    dmWith = id;
+    for (const b of document.querySelectorAll('.dm-th')) b.classList.toggle('on', b.dataset.with === id);
+    let r;
+    try { r = await api('GET', '/api/dm?with=' + encodeURIComponent(id)); } catch (e) { return fail(e); }
+    $('dmHead').innerHTML = crestHtml(r.with.name, r.with.color, 'sm') + '<div><b>' + esc(r.with.name) + '</b><small>' + esc(r.with.manager) + (r.with.online ? ' · <span class="up">online</span>' : '') + '</small></div><a href="#" class="link" data-club="' + esc(r.with.id) + '">Ver clube</a>';
+    $('dmMsgs').innerHTML = r.messages.map(m => '<div class="dmm' + (m.data.from === S.me.id ? ' mine' : '') + '"><span>' + esc(m.data.text) + '</span><small>' + ago(m.at) + '</small></div>').join('') || '<p class="muted small">Comece a conversa.</p>';
+    $('dmMsgs').scrollTop = $('dmMsgs').scrollHeight;
+    $('dmForm').hidden = false;
+    $('dmMain').classList.add('open');
+    if (r.messages.some(m => !m.read)) api('POST', '/api/inbox/read', { kind: 'dm', with: id }).then(x => { setUnread(x.unread); const b = document.querySelector('.dm-th[data-with="' + CSS.escape(id) + '"] .nbadge'); if (b) b.remove(); }).catch(() => {});
+  }
+  $('dmThreads').onclick = e => { const b = e.target.closest('[data-with]'); if (b) openThread(b.dataset.with); };
+  $('dmNew').onclick = () => { const v = $('dmTo').value; if (v) openThread(v); };
+  $('dmForm').onsubmit = async e => {
+    e.preventDefault();
+    const v = $('dmInput').value.trim();
+    if (!v || !dmWith) return;
+    $('dmInput').value = '';
+    try { await api('POST', '/api/dm', { to: dmWith, text: v }); await loadDm(); } catch (err) { fail(err); }
+  };
+
+  /* ---------- relatório da partida (janela) ---------- */
+  async function openReport(m) {
+    const r = m.data;
+    if (!m.read) { m.read = true; api('POST', '/api/inbox/read', { ids: [m.id] }).then(x => setUnread(x.unread)).catch(() => {}); }
+    $('pModal').hidden = false;
+    $('pModal').querySelector('.pbox').classList.add('wide');
+    const mine = r.side, other = mine === 'home' ? 'away' : 'home';
+    const RES = { w: ['Vitória', 'up'], d: ['Empate', 'muted'], l: ['Derrota', 'down'] }[r.result];
+    const goals = r.goals.map(g => '<li class="' + (g.side === mine ? 'mine' : '') + '"><b>' + esc(g.min) + "'</b> " + esc(g.player) + (g.og ? ' (contra)' : '') + ({ pen: ' · pênalti', fk: ' · falta', head: ' · cabeça' }[g.kind] || '') + (g.assist ? ' <small>ass. ' + esc(g.assist) + '</small>' : '') + '</li>').join('');
+    const T = r.team, row = (label, a, b, pa, pb) => '<div class="rs-row"><b>' + a + '</b><span>' + label + '</span><b>' + b + '</b></div>' + (pa != null ? '<div class="rs-bar"><i style="width:' + pa + '%"></i><i style="width:' + pb + '%"></i></div>' : '');
+    const pct = t => (t.passes ? Math.round(t.passOk / t.passes * 100) + '%' : '—');
+    const tot = (a, b) => (a + b ? [Math.round(a / (a + b) * 100), 100 - Math.round(a / (a + b) * 100)] : [50, 50]);
+    const [s1, s2] = tot(T.mine.shots, T.theirs.shots);
+    const stats = row('Posse de bola', T.mine.poss + '%', T.theirs.poss + '%', T.mine.poss, T.theirs.poss) +
+      row('Finalizações (no gol)', T.mine.shots + ' (' + T.mine.onTarget + ')', T.theirs.shots + ' (' + T.theirs.onTarget + ')', s1, s2) +
+      row('Passes certos', pct(T.mine), pct(T.theirs)) + row('Escanteios', T.mine.corners, T.theirs.corners) + row('Faltas', T.mine.fouls, T.theirs.fouls) +
+      row('Cartões', '🟨' + T.mine.yellow + (T.mine.red ? ' 🟥' + T.mine.red : ''), '🟨' + T.theirs.yellow + (T.theirs.red ? ' 🟥' + T.theirs.red : ''));
+    const best = r.best.map(x => '<li>' + rateChip(x.rating) + '<a href="#" class="plink" data-player="' + esc(x.id) + '">' + esc(x.name) + '</a><small>' + esc(x.why) + '</small></li>').join('') || '<li class="muted">Ninguém passou de 7.</li>';
+    const worst = r.worst.map(x => '<li>' + rateChip(x.rating) + '<a href="#" class="plink" data-player="' + esc(x.id) + '">' + esc(x.name) + '</a></li>').join('') || '<li class="muted">Ninguém abaixo de 6. 👏</li>';
+    const train = r.train.map(t => '<div class="rp-train"><div><b>' + esc(t.name) + '</b> <span class="tag">' + esc(t.focusName) + '</span><small>' + esc(t.why) + '</small></div><button class="btn sm primary" data-rtrain="' + esc(t.id) + '" data-focus="' + esc(t.focus) + '" type="button">Treinar ' + esc(t.focusName) + '</button></div>').join('');
+    const players = r.players.map(p => '<tr><td>' + rateChip(p.rating) + '</td><td class="nowrap"><span class="pos sm ' + p.role + '">' + esc(p.pos) + '</span> <a href="#" class="plink" data-player="' + esc(p.id) + '">' + esc(p.name) + '</a>' + (p.sub ? ' <small class="muted">(entrou)</small>' : '') + '</td><td class="muted small">' + esc(p.tags.join(' · ')) + '</td></tr>').join('');
+    const x = r.extra || {};
+    const extra = [x.talk ? '🎙️ Preleção: ' + x.talk : null, x.classic ? '🔥 Clássico (bilheteria em dobro)' : null, x.crowd ? '🏟️ Torcida: +' + x.crowd + '% nas habilidades em casa' : null].filter(Boolean);
+    const notes = extra.concat(r.notes || []).map(n => '<li>' + esc(n) + '</li>').join('');
+    $('pBody').innerHTML = '<div class="rp">' +
+      '<div class="rp-head"><small class="muted">' + esc(r.comp) + ' · ' + fmtAt(r.at) + '</small>' +
+      '<div class="rp-score"><div class="rp-t">' + crestHtml(r.home.name, r.home.color, 'sm') + '<b>' + esc(r.home.name) + '</b></div><div class="rp-sc">' + r.score[0] + ' – ' + r.score[1] + (r.pens ? '<small>pên. ' + r.pens[0] + '-' + r.pens[1] + '</small>' : '') + '</div><div class="rp-t">' + crestHtml(r.away.name, r.away.color, 'sm') + '<b>' + esc(r.away.name) + '</b></div></div>' +
+      '<div class="rp-res ' + RES[1] + '">' + RES[0] + '</div>' + (goals ? '<ul class="rp-goals">' + goals + '</ul>' : '') + '</div>' +
+      (r.motm ? '<div class="rp-motm"><span>⭐</span><div><small>Craque da partida</small><b>' + esc(r.motm.name) + '</b><small>' + (r.motm.mine ? 'do seu time' : 'do adversário') + '</small></div>' + rateChip(r.motm.rating) + '</div>' : '') +
+      '<div class="rp-grid"><section><h4>Números do jogo <small>(você × adversário)</small></h4><div class="rp-stats">' + stats + '</div></section>' +
+      '<section><h4>👍 Atuaram bem</h4><ul class="rp-list">' + best + '</ul><h4>👎 Abaixo do esperado</h4><ul class="rp-list">' + worst + '</ul></section></div>' +
+      (train ? '<section><h4>🏋️ Precisa treinar</h4>' + train + '</section>' : '<section><h4>🏋️ Precisa treinar</h4><p class="muted small">Nenhum ponto fraco claro nos números deste jogo.</p></section>') +
+      '<section><h4>Notas do seu time</h4><div class="pgtable"><table class="tbl rp-tbl">' + players + '</table></div></section>' +
+      (notes ? '<section><h4>Anotações</h4><ul class="rp-notes">' + notes + '</ul></section>' : '') +
+      '<div class="rp-acts">' + (r.goals.length ? '<button class="btn primary" data-hl="' + esc(r.matchId) + '" type="button">⚽ Ver os gols</button>' : '') + '<button class="btn" data-full="' + esc(r.matchId) + '" type="button">▶ Rever a partida</button><button class="btn" data-close="1" type="button">Fechar</button></div>' +
+      '</div>';
+  }
+  $('pBody').addEventListener('click', e => {
+    const dt = e.target.closest('[data-dmto]');
+    if (dt) { $('pModal').hidden = true; openInbox('dm', dt.dataset.dmto); return; }
+    const t = e.target.closest('[data-rtrain]');
+    if (t) { $('pModal').hidden = true; followGoto({ tab: 'train', ids: [t.dataset.rtrain], focus: t.dataset.focus }); return; }
+    const h = e.target.closest('[data-hl]');
+    if (h) { $('pModal').hidden = true; openMatch(h.dataset.hl, { highlights: true }); return; }
+    const f = e.target.closest('[data-full]');
+    if (f) { $('pModal').hidden = true; openMatch(f.dataset.full); return; }
+    if (e.target.closest('[data-close]')) $('pModal').hidden = true;
+    const rs = e.target.closest('[data-rs]');
+    if (rs) { const m = reportQueue.find(x => x.id === rs.dataset.rs); if (m) openReport(m); }
+  });
+
+  /** Ao entrar: relatórios que chegaram com o técnico fora (um abre direto; vários viram um resumo). */
+  let reportQueue = [];
+  async function showPendingReports() {
+    let r;
+    try { r = await api('GET', '/api/inbox?kind=report'); } catch (_) { return; }
+    reportQueue = r.messages.filter(m => !m.read);
+    if (!reportQueue.length) return;
+    if (reportQueue.length === 1) return openReport(reportQueue[0]);
+    const w = reportQueue.filter(m => m.data.result === 'w').length, d = reportQueue.filter(m => m.data.result === 'd').length, l = reportQueue.length - w - d;
+    $('pModal').hidden = false;
+    $('pModal').querySelector('.pbox').classList.add('wide');
+    $('pBody').innerHTML = '<div class="rp"><div class="rp-head"><h3>Enquanto você esteve fora</h3><p class="muted">' + reportQueue.length + ' jogos: ' + w + ' vitória(s), ' + d + ' empate(s) e ' + l + ' derrota(s). Toque em um jogo para ver o relatório.</p></div>' +
+      '<div class="rp-sum">' + reportQueue.map(m => { const x = m.data; return '<button class="rs-item r-' + x.result + '" data-rs="' + esc(m.id) + '" type="button"><span class="rs-res">' + ({ w: 'V', d: 'E', l: 'D' }[x.result]) + '</span><span><b>' + esc(x.home.name) + ' ' + x.score[0] + ' x ' + x.score[1] + ' ' + esc(x.away.name) + '</b><small>' + esc(x.comp) + ' · ' + fmtAt(x.at) + (x.motm ? ' · craque ' + esc(x.motm.name) : '') + '</small></span></button>'; }).join('') + '</div>' +
+      '<div class="rp-acts"><button class="btn" data-close="1" type="button">Fechar</button></div></div>';
+  }
+
+  /* ---------- vestiário: preleção, palestra do intervalo e moral ---------- */
+  let lkData = null;
+  async function loadLocker() {
+    renderLocker();
+    try { lkData = await api('GET', '/api/locker'); } catch (e) { return fail(e); }
+    if (S.tab === 'locker') renderLocker();
+  }
+  function renderLocker() {
+    const P = S.meta.pre, cur = S.me.talk;
+    const SIDE = { fav: 'favorito', even: 'parelho', dog: 'azarão' };
+    $('lkTalk').innerHTML = Object.keys(P).map(k => '<button class="talk' + (cur === k ? ' on' : '') + '" data-talk="' + k + '" type="button"><b>' + esc(P[k].label) + '</b><span class="talk-fx">' +
+      ['fav', 'even', 'dog'].map(s => '<i class="' + (P[k][s] > 0 ? 'up' : P[k][s] < 0 ? 'down' : 'muted') + '">' + SIDE[s] + ' ' + (P[k][s] > 0 ? '+' : '') + Math.round(P[k][s] * 100) + '%</i>').join('') + '</span><small>' + esc(P[k].about) + '</small></button>').join('') +
+      (cur ? '<button class="btn sm" data-talk="" type="button">Tirar preleção</button>' : '');
+    const plan = S.me.plan || [], T = S.meta.talks, FX = S.meta.talkEffects;
+    const SIT = { losing: 'Perdendo', drawing: 'Empatando', winning: 'Ganhando' };
+    $('lkHalf').innerHTML = Object.keys(SIT).map(s => {
+      const e = plan.find(x => x.type === 'talk' && x.when === s);
+      return '<label class="half"><span>' + SIT[s] + ' no intervalo</span><select data-half="' + s + '"><option value="">Nada</option>' + Object.keys(T).map(k => '<option value="' + k + '"' + (e && e.style === k ? ' selected' : '') + '>' + esc(T[k]) + ' (' + (FX[k][s] >= 0 ? '+' : '') + Math.round(FX[k][s] * 100) + '%)</option>').join('') + '</select></label>';
+    }).join('');
+    $('lkHalfHelp').textContent = 'Efeito no 2º tempo: cobrar funciona melhor quando o time está perdendo; tranquilizar, quando está ganhando; incentivar dá +2% em qualquer placar.';
+    const sq = S.me.squad.map(player).filter(Boolean).sort((a, b) => moralOf(b.id) - moralOf(a.id));
+    const L = lkData ? new Map(lkData.players.map(p => [p.id, p])) : new Map();
+    const avg = sq.length ? Math.round(sq.reduce((t, p) => t + moralOf(p.id), 0) / sq.length) : 0;
+    $('lkSummary').textContent = sq.length ? 'Média do grupo: ' + avg + ' ' + moodIcon(avg) : '';
+    $('lkTable').innerHTML = '<tr class="rh"><th>Jogador</th><th>Moral</th><th class="num">Em campo</th><th>Situação</th></tr>' + (sq.map(p => {
+      const m = moralOf(p.id), x = L.get(p.id) || {}, eff = ((Math.max(-1, Math.min(1, (m - 60) / 40))) * 3);
+      const sit = [S.me.lineup.includes(p.id) ? '<span class="tag">Titular</span>' : '', x.bench >= 2 ? '<span class="tag">' + x.bench + ' jogos sem entrar</span>' : '', x.promise ? '<span class="tag hot">Vaga prometida</span>' : ''].join(' ');
+      return '<tr class="rc"><td class="c-name"><span class="pos ' + p.role + '">' + p.pos + '</span> ' + avatar(p) + '<a href="#" class="plink" data-player="' + esc(p.id) + '">' + esc(p.name) + '</a></td>' +
+        '<td class="c-moral"><span class="mbar ' + moralCls(m) + '"><i style="width:' + m + '%"></i></span><b>' + moodIcon(m) + ' ' + m + '</b></td>' +
+        '<td class="num c-eff"><b class="' + (eff > 0.05 ? 'up' : eff < -0.05 ? 'down' : 'muted') + '">' + (eff >= 0 ? '+' : '') + eff.toFixed(1).replace('.', ',') + '%</b></td><td class="c-sit">' + (sit.trim() || '<span class="muted small">—</span>') + '</td></tr>';
+    }).join('') || '<tr><td colspan="4">Seu elenco está vazio.</td></tr>');
+  }
+  $('lkTalk').onclick = async e => {
+    const b = e.target.closest('[data-talk]');
+    if (!b) return;
+    try {
+      S.me = (await api('POST', '/api/talk', { style: b.dataset.talk || null })).club;
+      renderLocker();
+      toast(b.dataset.talk ? '🎙️ Preleção "' + esc(S.meta.pre[b.dataset.talk].label) + '" guardada para o próximo jogo oficial.' : 'Preleção retirada.');
+    } catch (err) { fail(err); }
+  };
+  $('lkHalf').onchange = e => {
+    const s = e.target.dataset.half;
+    if (!s) return;
+    const plan = (S.me.plan || []).filter(x => !(x.type === 'talk' && x.when === s));
+    if (e.target.value) plan.push({ type: 'talk', when: s, style: e.target.value });
+    saveTactics(S.me.tactic || 'balanced', plan).then(renderLocker);
+  };
+
+  /* ---------- categoria de base ---------- */
+  async function loadAcademy() {
+    let r;
+    try { r = await api('GET', '/api/academy'); } catch (e) { $('acList').innerHTML = '<p class="muted">' + esc(e.message) + '</p>'; return; }
+    $('acNext').textContent = 'novas promessas ' + until(r.next);
+    const stars = n => '★'.repeat(n) + '☆'.repeat(5 - n);
+    $('acList').innerHTML = r.players.map(p => '<div class="ac"><div class="ac-top"><span class="pos ' + p.role + '">' + esc(p.pos) + '</span><b class="ac-ovr">' + p.ovr + '</b></div><b class="ac-name">' + esc(p.name) + '</b>' +
+      '<small>' + p.age + ' anos · potencial <span class="stars" title="Potencial de evolução">' + stars(p.potential) + '</span></small>' +
+      '<button class="btn primary sm" data-sign="' + esc(p.id) + '" type="button"' + (p.value > S.me.budget || r.squad >= r.squadMax ? ' disabled' : '') + '>Contratar por ' + money(p.value) + '</button></div>').join('') ||
+      '<p class="muted">Você já contratou as promessas desta semana. Novas aparecem na segunda-feira.</p>';
+  }
+  $('acList').onclick = async e => {
+    const b = e.target.closest('[data-sign]');
+    if (!b) return;
+    b.disabled = true;
+    try {
+      const r = await api('POST', '/api/academy/sign', { id: b.dataset.sign });
+      S.me = r.club;
+      toast('🌱 <b>' + esc(r.player.name) + '</b> subiu da base para o elenco! Treine-o no Centro de Treinamento.');
+      await loadCatalog();
+      renderTop(); renderSquad(); loadAcademy();
+    } catch (err) { fail(err); b.disabled = false; }
+  };
 
   /* ---------- mercado ---------- */
   for (const id of ['mkSearch', 'mkPos', 'mkSort', 'mkFree', 'mkAfford']) $(id).addEventListener('input', () => { S.shown = 60; renderMarket(); });
@@ -566,7 +1027,7 @@
     $('sqCount').textContent = sq.length + '/' + S.meta.squadMax;
     $('sqInfo').textContent = sq.length + ' jogadores · valor do elenco ' + money(sq.reduce((s, p) => s + p.value, 0)) + ' · compra com ágio de ' + Math.round((S.meta.buyPremium - 1) * 100) + '%, venda por ' + Math.round(S.meta.sellRatio * 100) + '% do valor de mercado.';
     $('sqTable').innerHTML = '<tr class="rh"><th>Pos</th><th>Jogador</th><th>Clube de origem</th><th class="num">Nota</th><th>Condição</th><th class="num">Valor</th><th class="num">Venda</th><th></th></tr>' +
-      (sq.map(p => '<tr class="rc"><td class="c-pos"><span class="pos ' + p.role + '">' + p.pos + '</span></td><td class="c-name">' + avatar(p) + '<a href="#" class="plink" data-player="' + esc(p.id) + '">' + esc(p.name) + '</a></td><td class="c-club">' + esc(p.club) + '</td><td class="num ovr c-ovr">' + p.ovr + formTag(p) + '</td><td class="c-fit">' + fitBar(fitOf(p.id).cond) + (fitOf(p.id).rest ? ' <span class="tag rest">😴</span>' : '') + outTag(fitOf(p.id)) + '</td><td class="num c-val">' + money(p.value) + '</td><td class="num c-price">' + money(p.value * S.meta.sellRatio) + '</td><td class="c-act"><button class="btn danger sm" data-sell="' + esc(p.id) + '" type="button">Vender</button> <button class="btn sm" data-auc="' + esc(p.id) + '" type="button">Leiloar</button></td></tr>').join('') ||
+      (sq.map(p => '<tr class="rc"><td class="c-pos"><span class="pos ' + p.role + '">' + p.pos + '</span></td><td class="c-name">' + avatar(p) + '<a href="#" class="plink" data-player="' + esc(p.id) + '">' + esc(p.name) + '</a> <span class="mood" title="Moral ' + moralOf(p.id) + ' (veja o Vestiário)">' + moodIcon(moralOf(p.id)) + '</span></td><td class="c-club">' + esc(p.club) + '</td><td class="num ovr c-ovr">' + p.ovr + formTag(p) + '</td><td class="c-fit">' + fitBar(fitOf(p.id).cond) + (fitOf(p.id).rest ? ' <span class="tag rest">😴</span>' : '') + outTag(fitOf(p.id)) + '</td><td class="num c-val">' + money(p.value) + '</td><td class="num c-price">' + money(p.value * S.meta.sellRatio) + '</td><td class="c-act"><button class="btn danger sm" data-sell="' + esc(p.id) + '" type="button">Vender</button> <button class="btn sm" data-auc="' + esc(p.id) + '" type="button">Leiloar</button></td></tr>').join('') ||
         '<tr><td colspan="8">Seu elenco está vazio. Vá ao Mercado e contrate jogadores.</td></tr>');
     const c = S.me.coach && coach(S.me.coach);
     $('sqCoach').innerHTML = c
@@ -837,6 +1298,10 @@
     $('pBody').innerHTML = '<div class="phead"><span class="avatar big" style="background:' + esc(c.color) + '"><i style="color:' + textColor(c.color) + '">' + esc(c.name.slice(0, 3).toUpperCase()) + '</i></span>' +
       '<div><h3>' + esc(c.name) + '</h3><div class="muted">Técnico ' + esc(c.manager) + (c.online ? ' · <span class="up">online</span>' : '') + (d.coach ? ' · comandante ' + esc(d.coach.name) : '') + '</div></div></div>' +
       '<div class="pfacts">' + (c.facilities ? chip('🏋️ CT', 'nível ' + c.facilities.ct) + chip('🩺 Médico', 'nível ' + c.facilities.med) + chip('🏟️ Estádio', 'nível ' + c.facilities.stadium) : '') + chip('Pontos', c.points) + chip('Jogos', c.played) + chip('V / E / D', c.w + ' / ' + c.d + ' / ' + c.l) + chip('Gols pró / contra', c.gf + ' / ' + c.ga) + chip('Elenco', c.squadSize) + chip('Valor do elenco', money(c.squadValue)) + '</div>' +
+      (d.h2h && d.h2h.games ? '<div class="pstat"><b>Retrospecto contra o seu clube' + (d.h2h.classic ? ' · <span class="tag hot">🔥 Clássico</span>' : '') + '</b><div class="pfacts">' + chip('Jogos', d.h2h.games) + chip('Suas vitórias', d.h2h.a) + chip('Empates', d.h2h.draws) + chip('Vitórias deles', d.h2h.b) + chip('Gols (você x eles)', d.h2h.gfA + ' x ' + d.h2h.gfB) + '</div>' +
+        (d.h2h.classic ? '' : '<p class="muted small">Com ' + 3 + ' jogos oficiais entre os dois clubes, o confronto vira clássico (bilheteria em dobro).</p>') + '</div>' : '') +
+      (d.trophies && d.trophies.length ? '<div class="pstat"><b>🏆 Sala de troféus</b><ul class="rp-notes">' + d.trophies.slice().reverse().map(t => '<li>' + esc(t.title) + ' <small class="muted">' + new Date(t.at).toLocaleDateString('pt-BR') + '</small></li>').join('') + '</ul></div>' : '') +
+      (c.id !== S.me.id ? '<div class="pact"><button class="btn sm" data-dmto="' + esc(c.id) + '" type="button">💬 Mandar mensagem ao técnico</button></div>' : '') +
       '<div class="pstat"><b>Elenco e estatísticas pelo clube</b>' +
       (d.squad.length ? '<div class="pgtable"><table class="tbl"><tr><th>Jogador</th><th>Pos</th><th class="num">Nota</th><th class="num" title="Jogos">J</th><th class="num" title="Gols">G</th><th class="num" title="Assistências">A</th><th class="num" title="Gols + assistências">G+A</th><th class="num" title="Jogos sem sofrer gol (goleiro e defensores)">SSG</th><th class="num" title="Cartões amarelos">CA</th><th class="num" title="Cartões vermelhos">CV</th></tr>' +
         d.squad.map(x => '<tr' + (x.inLineup ? ' class="me"' : '') + '><td class="nowrap">' + playerLink(x.player) + '</td><td><span class="pos ' + x.player.role + '">' + x.player.pos + '</span></td><td class="num ovr">' + x.player.ovr + '</td><td class="num">' + x.stats.apps + '</td><td class="num">' + x.stats.goals + '</td><td class="num">' + x.stats.assists + '</td><td class="num"><b>' + x.stats.ga + '</b></td><td class="num">' + x.stats.cleanSheets + '</td><td class="num">' + x.stats.yellows + '</td><td class="num">' + x.stats.reds + '</td></tr>').join('') +
@@ -892,8 +1357,11 @@
     $('tcOut').innerHTML = S.lineup.map((id, i) => i > 0 && id ? '<option value="' + i + '">' + esc((player(id) || {}).short || '?') + ' (' + slots[i].pos + ' · ' + fitOf(id).cond + '%' + outText(fitOf(id)) + ')</option>' : '').join('');
     const bench = S.me.squad.map(player).filter(p => p && p.pos !== 'GK' && !S.lineup.includes(p.id)).sort((a, b) => b.ovr - a.ovr);
     $('tcIn').innerHTML = bench.map(p => '<option value="' + esc(p.id) + '">' + esc(p.short) + ' (' + p.pos + ' · ' + p.ovr + ' · ' + fitOf(p.id).cond + '%' + outText(fitOf(p.id)) + ')</option>').join('') || '<option value="">Sem reservas no elenco</option>';
+    const W = S.meta.when, whenOpts = '<option value="">sempre</option>' + Object.keys(W).map(k => '<option value="' + k + '">se estiver ' + esc(W[k]) + '</option>').join('');
+    for (const id of ['tcSubWhen', 'tcTacWhen']) { const v = $(id).value; $(id).innerHTML = whenOpts; $(id).value = v || ''; }
     const plan = me.plan || [];
-    $('tcPlan').innerHTML = plan.map((e, i) => {
+    const rows = plan.map((e, i) => {
+      if (e.type === 'talk') return ''; // palestras do intervalo ficam no Vestiário
       let txt;
       if (e.type === 'tactic') txt = 'Mudar para <b>' + esc(tacs[e.style]) + '</b>';
       else {
@@ -901,8 +1369,12 @@
         const ok = out && inn && !S.lineup.includes(e.in);
         txt = 'Sai <b>' + esc(out ? out.short : '?') + '</b>, entra <b>' + esc(inn ? inn.short : '?') + '</b>' + (ok ? '' : ' <span class="tag">inválida: será ignorada</span>');
       }
-      return '<div class="plan-row"><span class="tag">' + e.min + "'</span> " + txt + ' <button class="btn sm" data-pdel="' + i + '" type="button">Remover</button></div>';
-    }).join('') || '<p class="muted">Nenhuma troca planejada.</p>';
+      const cond = e.when && W[e.when] ? ' <span class="tag cond">se estiver ' + esc(W[e.when]) + '</span>' : '';
+      return '<div class="plan-row"><span class="tag">' + (e.when ? 'a partir dos ' : '') + e.min + "'</span>" + cond + ' ' + txt + ' <button class="btn sm" data-pdel="' + i + '" type="button">Remover</button></div>';
+    }).join('');
+    const talks = plan.filter(e => e.type === 'talk').length;
+    $('tcPlan').innerHTML = (rows || '<p class="muted">Nenhuma troca ou instrução planejada.</p>') +
+      (talks ? '<p class="muted small">+ ' + talks + ' palestra(s) do intervalo definida(s) no <a href="#" class="link" data-tab="locker">Vestiário</a>.</p>' : '');
   }
   async function saveTactics(tactic, plan) {
     try {
@@ -915,11 +1387,13 @@
     e.preventDefault();
     const inId = $('tcIn').value;
     if (!inId || !$('tcOut').value) return toast('Escale o time e tenha reservas no elenco para planejar trocas.', { err: true });
-    saveTactics(S.me.tactic || 'balanced', (S.me.plan || []).concat([{ type: 'sub', min: +$('tcSubMin').value, out: +$('tcOut').value, in: inId }]));
+    const w = $('tcSubWhen').value;
+    saveTactics(S.me.tactic || 'balanced', (S.me.plan || []).concat([Object.assign({ type: 'sub', min: +$('tcSubMin').value, out: +$('tcOut').value, in: inId }, w ? { when: w } : {})]));
   };
   $('tcTacForm').onsubmit = e => {
     e.preventDefault();
-    saveTactics(S.me.tactic || 'balanced', (S.me.plan || []).concat([{ type: 'tactic', min: +$('tcTacMin').value, style: $('tcTacStyle').value }]));
+    const w = $('tcTacWhen').value;
+    saveTactics(S.me.tactic || 'balanced', (S.me.plan || []).concat([Object.assign({ type: 'tactic', min: +$('tcTacMin').value, style: $('tcTacStyle').value }, w ? { when: w } : {})]));
   };
   $('tcPlan').onclick = e => {
     const b = e.target.closest('[data-pdel]');
@@ -1000,13 +1474,47 @@
   }
   $('lgList').onclick = e => { const c = e.target.closest('[data-open]'); if (c) { lgOpen = c.dataset.open; lgSub = null; openLeague(lgOpen); } };
 
-  $('lgNew').onclick = () => { $('lgFormError').textContent = ''; $('lgName').value = ''; $('lgDialog').showModal(); };
+  /* agenda: dias da semana (seg a dom) e horário de Brasília */
+  const DAY_ORDER = [1, 2, 3, 4, 5, 6, 0], DAY_SHORT = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
+  function fillDays(box, days) {
+    $(box).innerHTML = DAY_ORDER.map(d => '<label class="day"><input type="checkbox" value="' + d + '"' + (days.includes(d) ? ' checked' : '') + '><span>' + DAY_SHORT[d] + '</span></label>').join('');
+  }
+  const daysOf = box => [...$(box).querySelectorAll('input:checked')].map(x => +x.value);
+  $('lgAuto').onchange = () => { $('lgSched').hidden = !$('lgAuto').checked; $('lgTime').required = $('lgAuto').checked; };
+  $('schAuto').onchange = () => { $('schSched').hidden = !$('schAuto').checked; $('schTime').required = $('schAuto').checked; };
+
+  $('lgNew').onclick = () => {
+    $('lgFormError').textContent = ''; $('lgName').value = '';
+    $('lgAuto').checked = true; $('lgSched').hidden = false; $('lgTime').value = '20:00';
+    fillDays('lgDays', [0, 1, 2, 3, 4, 5, 6]);
+    $('lgDialog').showModal();
+  };
   $('lgCancel').onclick = () => $('lgDialog').close();
   $('lgFormat').onchange = () => { $('lgRoundsLbl').hidden = $('lgFormat').value === 'cup'; };
+  $('schCancel').onclick = () => $('schDialog').close();
+  function openSchedule(L) {
+    const s = L.schedule;
+    $('schError').textContent = '';
+    $('schAuto').checked = true; $('schSched').hidden = false;
+    $('schTime').value = s ? s.time : '20:00';
+    fillDays('schDays', s ? s.days : [0, 1, 2, 3, 4, 5, 6]);
+    $('schDialog').showModal();
+  }
+  $('schForm').onsubmit = async e => {
+    e.preventDefault();
+    const auto = $('schAuto').checked;
+    try {
+      lgData = await api('POST', '/api/leagues/schedule', { id: lgData.league.id, schedule: auto ? { days: daysOf('schDays'), time: $('schTime').value } : null });
+      $('schDialog').close();
+      renderLeague();
+      toast(auto ? '🗓️ Agenda salva: jogos ' + esc(lgData.league.scheduleText) + '.' : 'Jogos automáticos desligados.');
+    } catch (err) { $('schError').textContent = err.message; }
+  };
   $('lgForm').onsubmit = async e => {
     e.preventDefault();
     try {
-      const r = await api('POST', '/api/leagues', { name: $('lgName').value, format: $('lgFormat').value, rounds: +$('lgRounds').value });
+      const schedule = $('lgAuto').checked ? { days: daysOf('lgDays'), time: $('lgTime').value } : null;
+      const r = await api('POST', '/api/leagues', { name: $('lgName').value, format: $('lgFormat').value, rounds: +$('lgRounds').value, schedule });
       $('lgDialog').close();
       lgOpen = r.league.id; lgSub = null;
       toast('Sala criada! Passe o código <b>' + esc(r.league.code) + '</b> para os amigos.');
@@ -1051,22 +1559,32 @@
     const played = !!f.score;
     const meIn = f.home.id === S.me.id || f.away.id === S.me.id;
     const acts = [];
-    if (played && f.matchId) acts.push('<button class="btn sm" data-watch="' + esc(f.matchId) + '" type="button">Assistir</button>');
-    if (!played && L.status === 'running') {
-      if (meIn) acts.push('<button class="btn primary sm" data-play="' + esc(f.id) + '" type="button">Chamar para jogar</button>');
+    if (f.live) acts.push('<button class="btn primary sm" data-watch="' + esc(f.matchId) + '" type="button">🔴 Assistir ao vivo</button>');
+    else if (played && f.matchId) acts.push('<button class="btn sm" data-watch="' + esc(f.matchId) + '" type="button">Assistir</button>');
+    if (!played && !f.live && L.status === 'running') {
+      if (f.betOpen) acts.push('<button class="btn sm" data-bet="' + esc(f.id) + '" type="button">🎯 ' + (f.myBet ? 'Palpite ' + f.myBet[0] + 'x' + f.myBet[1] : 'Palpitar') + '</button>');
+      if (meIn) acts.push('<button class="btn ' + (f.at ? '' : 'primary ') + 'sm" data-play="' + esc(f.id) + '" type="button">' + (f.at ? 'Jogar antes' : 'Chamar para jogar') + '</button>');
       if (L.owner === S.me.id) acts.push('<button class="btn sm" data-sim="' + esc(f.id) + '" type="button">Simular</button>');
     }
-    const sc = played ? f.score[0] + ' x ' + f.score[1] + (f.pens ? '<small>pên. ' + f.pens[0] + '-' + f.pens[1] + '</small>' : '') : 'x';
-    return '<div class="fx"><div class="t">' + dot(f.home) + '<span class="' + (f.winner === f.home.id ? 'win' : '') + '">' + esc(f.home.name) + '</span></div><div class="sc">' + sc +
-      '</div><div class="t r"><span class="' + (f.winner === f.away.id ? 'win' : '') + '">' + esc(f.away.name) + '</span>' + dot(f.away) + '</div><div class="acts">' + acts.join('') + '</div></div>';
+    const sc = played ? f.score[0] + ' x ' + f.score[1] + (f.pens ? '<small>pên. ' + f.pens[0] + '-' + f.pens[1] + '</small>' : '') + (f.wo ? '<small>W.O.</small>' : '') : f.at ? '<small class="fx-at">' + esc(f.atLabel) + '</small>x' : 'x';
+    return '<div class="fx' + (meIn ? ' mine' : '') + '"><div class="t">' + dot(f.home) + '<span class="' + (f.winner === f.home.id ? 'win' : '') + '">' + esc(f.home.name) + '</span></div><div class="sc">' + sc +
+      '</div><div class="t r"><span class="' + (f.winner === f.away.id ? 'win' : '') + '">' + esc(f.away.name) + '</span>' + dot(f.away) + '</div><div class="acts">' + (f.classic ? '<span class="tag hot" title="Clássico: bilheteria em dobro">🔥 Clássico</span>' : '') + acts.join('') + '</div></div>';
   }
 
   function renderLeague() {
     const d = lgData, L = d.league, isOwner = L.owner === S.me.id;
     let h = '<div class="lg-head"><button class="btn sm" id="lgBack" type="button">← Voltar</button><h2>' + esc(L.name) + '</h2><span class="tag">' + fmtName(L) + ' · ' + statusName(L) + '</span></div>';
     h += '<div class="lg-code">Código de convite: <span class="code">' + esc(L.code) + '</span><button class="btn sm" id="lgCopy" type="button">Copiar</button></div>';
+    if (L.status !== 'finished') {
+      h += '<div class="lg-sched">' + ico('calendar') + '<span>' + (L.schedule ? '<b>Jogos automáticos ' + esc(L.scheduleText) + '</b> (horário de Brasília)' + (L.next ? ' · próximo ' + esc(fmtAt(L.next)) + ', ' + until(L.next) : '') : 'Sem agenda: os jogos acontecem por desafio (ou o dono simula).') + '</span>' +
+        (isOwner ? '<button class="btn sm" id="lgSchedBtn" type="button">' + (L.schedule ? 'Editar agenda' : 'Marcar horários') + '</button>' : '') + '</div>';
+    }
+    if (L.myGoal && L.status !== 'lobby') h += '<div class="lg-goal">🏛️ <span>Meta da diretoria para o seu clube: <b>' + esc(L.myGoal.text) + '</b> (bônus de ' + money(L.goalPrize) + ')</span></div>';
     if (L.status === 'finished') {
       h += '<div class="champ">🏆 Campeão: ' + esc(L.champion || '—') + (L.runnerUp ? ' · Vice: ' + esc(L.runnerUp) : '') + '</div>';
+      const A = L.awards, cn = id => { const m = L.members.find(x => x.id === id); return m ? m.name : ''; };
+      if (A && (A.scorer || A.best)) h += '<div class="awards">' + (A.scorer ? '<div>👟 <small>Artilheiro</small><b>' + esc(A.scorer.player) + '</b><span>' + esc(cn(A.scorer.clubId)) + ' · ' + A.scorer.goals + ' gols</span></div>' : '') +
+        (A.best ? '<div>⭐ <small>Craque da competição</small><b>' + esc(A.best.player) + '</b><span>' + esc(cn(A.best.clubId)) + ' · média ' + String(A.best.avg.toFixed(1)).replace('.', ',') + '</span></div>' : '') + '</div>';
     }
     if (L.status === 'lobby') {
       h += '<p class="muted">' + L.members.length + ' clube(s) na sala (mín. ' + L.limits.min + ', máx. ' + L.limits.max + '). Os amigos entram pela aba Ligas usando o código acima.</p>';
@@ -1078,7 +1596,7 @@
       $('lgDetail').innerHTML = h;
       return;
     }
-    const subs = L.format === 'league' ? [['table', 'Tabela'], ['games', 'Jogos'], ['scorers', 'Artilheiros'], ['assists', 'Assistências']] : [['games', 'Chaves e jogos'], ['scorers', 'Artilheiros'], ['assists', 'Assistências']];
+    const subs = (L.format === 'league' ? [['table', 'Tabela'], ['games', 'Jogos'], ['scorers', 'Artilheiros'], ['assists', 'Assistências']] : [['games', 'Chaves e jogos'], ['scorers', 'Artilheiros'], ['assists', 'Assistências']]).concat([['bolao', '🎯 Bolão']]);
     if (!lgSub || !subs.some(s => s[0] === lgSub)) lgSub = subs[0][0];
     h += '<div class="subtabs">' + subs.map(s => '<button data-sub="' + s[0] + '" class="' + (s[0] === lgSub ? 'on' : '') + '" type="button">' + s[1] + '</button>').join('') + '</div>';
     if (lgSub === 'table') {
@@ -1089,6 +1607,10 @@
       for (const f of d.fixtures) { let g = groups.find(x => x.round === f.round); if (!g) groups.push(g = { round: f.round, stage: f.stage, list: [] }); g.list.push(f); }
       h += groups.map(g => '<div class="round-title">' + esc(g.stage) + '</div>' + g.list.map(f => fxRow(f, L)).join('')).join('');
       if (L.format === 'cup' && L.status === 'running') h += '<p class="muted">Empate no tempo normal? Vai para a prorrogação e, se continuar, pênaltis.</p>';
+    } else if (lgSub === 'bolao') {
+      h += '<p class="muted small">Palpite o placar dos jogos (até o horário de cada um): placar exato vale 3 pontos e ' + money(3e6) + '; acertar o vencedor ou o empate, 1 ponto e ' + money(1e6) + '. Os botões 🎯 ficam na aba Jogos.</p>' +
+        '<div class="table-wrap"><table class="tbl"><tr><th>#</th><th>Clube</th><th class="num">Pontos</th><th class="num">Na mosca</th><th class="num">Acertos</th><th class="num">Palpites</th></tr>' +
+        ((d.bolao || []).map((r, i) => '<tr class="' + (r.club.id === S.me.id ? 'me' : '') + '"><td>' + (i + 1) + '</td><td>' + dot(r.club) + esc(r.club.name) + '</td><td class="num"><b>' + r.pts + '</b></td><td class="num">' + r.exact + '</td><td class="num">' + r.hits + '</td><td class="num">' + r.bets + '</td></tr>').join('') || '<tr><td colspan="6">Ninguém palpitou ainda.</td></tr>') + '</table></div>';
     } else if (lgSub === 'assists') {
       h += '<div class="table-wrap"><table class="tbl"><tr><th>#</th><th>Jogador</th><th>Clube</th><th class="num">Assist.</th></tr>' +
         ((d.assisters || []).map((x, i) => '<tr><td>' + (i + 1) + '</td><td>' + esc(x.player) + '</td><td>' + esc(x.club) + '</td><td class="num"><b>' + x.assists + '</b></td></tr>').join('') || '<tr><td colspan="4">Ainda não há assistências.</td></tr>') + '</table></div>';
@@ -1108,8 +1630,14 @@
       if (b.id === 'lgCopy') { try { await navigator.clipboard.writeText(L.code); toast('Código copiado.'); } catch (_) { toast('Código: <b>' + esc(L.code) + '</b>'); } return; }
       if (b.id === 'lgStart') { lgData = await api('POST', '/api/leagues/start', { id: L.id }); lgSub = null; return renderLeague(); }
       if (b.id === 'lgLeave') { if (!confirm('Sair desta sala?')) return; await api('POST', '/api/leagues/leave', { id: L.id }); lgOpen = null; return loadLeagues(); }
+      if (b.id === 'lgSchedBtn') return openSchedule(L);
       if (b.dataset.sub) { lgSub = b.dataset.sub; return renderLeague(); }
       if (b.dataset.watch) return openMatch(b.dataset.watch);
+      if (b.dataset.bet) {
+        const f = lgData.fixtures.find(x => x.id === b.dataset.bet);
+        if (f && await betPrompt(L.id, f.id, f.home.name, f.away.name, f.myBet)) openLeague(L.id, true);
+        return;
+      }
       if (b.dataset.play) {
         await api('POST', '/api/challenge', { fixture: { leagueId: L.id, fixtureId: b.dataset.play } });
         return toast('Desafio enviado ao adversário. Aguardando ele aceitar…');
@@ -1127,7 +1655,7 @@
   async function loadMatches() {
     try { S.matches = (await api('GET', '/api/matches')).matches; } catch (e) { return fail(e); }
     $('mtTable').innerHTML = '<tr class="rh"><th>Quando</th><th>Casa</th><th class="num">Placar</th><th>Visitante</th><th>Gols</th><th></th></tr>' +
-      (S.matches.map(m => '<tr class="rc"><td class="c-when">' + new Date(m.at).toLocaleString('pt-BR') + '</td><td class="c-home">' + esc(m.home.name) + '</td><td class="num c-score"><b>' + m.score[0] + ' - ' + m.score[1] + '</b>' + (m.pens ? ' <span class="tag">(pên. ' + m.pens[0] + '-' + m.pens[1] + ')</span>' : '') + '</td><td class="c-away">' + esc(m.away.name) + (m.cpu ? ' <span class="tag">(CPU)</span>' : '') + (m.league ? ' <span class="tag">· ' + esc(m.league.name) + ' — ' + esc(m.league.stage || '') + '</span>' : '') + '</td><td class="c-goals">' +
+      (S.matches.map(m => '<tr class="rc"><td class="c-when">' + new Date(m.at).toLocaleString('pt-BR') + '</td><td class="c-home">' + esc(m.home.name) + '</td><td class="num c-score">' + (m.live ? '<span class="tag live-tag">🔴 ao vivo</span>' : '<b>' + m.score[0] + ' - ' + m.score[1] + '</b>') + (m.pens ? ' <span class="tag">(pên. ' + m.pens[0] + '-' + m.pens[1] + ')</span>' : '') + '</td><td class="c-away">' + esc(m.away.name) + (m.cpu ? ' <span class="tag">(CPU)</span>' : '') + (m.league ? ' <span class="tag">· ' + esc(m.league.name) + ' — ' + esc(m.league.stage || '') + '</span>' : '') + '</td><td class="c-goals">' +
         esc(m.goals.map(g => g.player + ' ' + g.min + "'").join(', ')) + '</td><td class="c-act"><button class="btn sm" data-w="' + m.id + '" type="button">Assistir</button></td></tr>').join('') || '<tr><td colspan="6">Nenhuma partida ainda.</td></tr>');
   }
   $('mtTable').onclick = e => { const b = e.target.closest('[data-w]'); if (b) openMatch(b.dataset.w); };
@@ -1136,6 +1664,32 @@
   // pb != null => partida entre dois jogadores: pausa/velocidade/pular valem para os dois ao mesmo tempo.
   let rec = null, match = null, renderer = null, paused = false, speed = 1, acc = 0, last = 0, raf = 0, bannerUntil = 0;
   let steps = 0, pb = null, clockOffset = 0, countdownOn = false, oldEngine = false;
+  let hl = null, hlSkip = false; // "Ver os gols": janelas [início, fim] (em passos) em volta de cada gol
+
+  /** Passos em que saem os gols (roda a partida escondida, rápido) e as janelas dos melhores momentos: 7 s antes a 4 s depois. */
+  function goalWindows(m) {
+    const sim = new FootballEngine.Match(m.homeDef, m.awayDef, { seed: m.seed, knockout: !!m.knockout });
+    const at = [];
+    let n = 0;
+    sim.on(ev => { if (ev.type === 'goal') at.push(n); });
+    while (!sim.finished && n < 100000) { sim.update(STEP); n++; }
+    const wins = [];
+    for (const s of at) { const w = [Math.max(0, s - 60 * 7), s + 60 * 4]; if (wins.length && w[0] <= wins[wins.length - 1][1]) wins[wins.length - 1][1] = w[1]; else wins.push(w); }
+    return { wins, i: 0, total: at.length };
+  }
+  /** Avança sem desenhar nem narrar até o passo `to` (ou o fim). */
+  function fastForward(to, limit) {
+    quiet = true; hlSkip = true;
+    let n = 0;
+    while (!match.finished && steps < to && n < limit) { match.update(STEP); steps++; n++; }
+    quiet = false; hlSkip = false;
+  }
+  /** Jogo marcado ao vivo: mexer nos controles sai da transmissão só nesta tela (os outros continuam juntos). */
+  function detach() {
+    if (!pb || !pb.broadcast) return;
+    pb = null; paused = false; speed = 1; acc = 0;
+    $('vSync').textContent = 'Fora da transmissão ao vivo (só na sua tela)';
+  }
 
   const serverNow = () => Date.now() + clockOffset;
   function pbTick() {
@@ -1230,6 +1784,7 @@
 
   function startNarration() {
     narr = new Narrator(match, line => {
+      if (hlSkip) return; // melhores momentos: o que foi pulado não entra na narração
       addFeed(line);
       if (quiet) return;
       if (line.type === 'goal') sfx.goal();
@@ -1281,7 +1836,12 @@
     sendChat({ kind: 'text', text: v });
   };
 
-  async function openMatch(id) {
+  /**
+   * Abre uma partida. opts.highlights: "Ver os gols" (pula direto para alguns segundos antes de cada gol, sem sincronizar com ninguém).
+   * Jogo marcado ao vivo (playback.broadcast): todos veem o mesmo instante; mexer em pausa/velocidade/pular sai da transmissão só aqui.
+   */
+  async function openMatch(id, opts) {
+    opts = opts || {};
     let r;
     try { r = await api('GET', '/api/match?id=' + encodeURIComponent(id)); } catch (e) { return fail(e); }
     const m = r.match;
@@ -1296,15 +1856,23 @@
     oldEngine = (m.engine || 0) !== FootballEngine.VERSION;
     match = new FootballEngine.Match(m.homeDef, m.awayDef, { seed: m.seed, knockout: !!m.knockout });
     match.on(bigMoment);
-    paused = false; speed = 1; acc = 0; steps = 0; countdownOn = false; pb = null;
+    paused = false; speed = 1; acc = 0; steps = 0; countdownOn = false; pb = null; hl = null;
     $('vFeed').innerHTML = ''; $('vChat').innerHTML = ''; $('vFloat').innerHTML = '';
+    const mine = S.me && !m.cpu && (m.home.id === S.me.id || m.away.id === S.me.id);
+    $('vReport').hidden = !mine; pendingReport = null;
+    $('vHl').hidden = true;
     startNarration();
-    if (r.playback) {
+    if (opts.highlights) {
+      hl = goalWindows(m);
+      $('vSync').hidden = true; $('vChatBox').hidden = true;
+      $('vHl').hidden = false;
+      paintControls();
+    } else if (r.playback) {
       applyPlayback(r.playback);
       const opp = S.me && m.home.id === S.me.id ? m.away.name : m.home.name;
-      $('vSync').textContent = '🔗 Controles sincronizados com ' + opp;
+      $('vSync').textContent = r.playback.broadcast ? '🔴 Ao vivo: todos veem o mesmo lance' : '🔗 Controles sincronizados com ' + opp;
       $('vSync').hidden = false;
-      $('vChatBox').hidden = false;
+      $('vChatBox').hidden = r.canChat === false;
       for (const m of r.chat || []) addChat($('vChat'), m);
     } else {
       $('vSync').hidden = true;
@@ -1398,6 +1966,18 @@
         $('banner').innerHTML = 'Começa em ' + Math.ceil(wait / 1000) + '…<small>aguardando os dois jogadores</small>';
         $('banner').hidden = false; countdownOn = true;
       } else if (countdownOn) { $('banner').hidden = true; countdownOn = false; }
+    } else if (hl) {
+      const w = hl.wins[hl.i];
+      if (!w) fastForward(Infinity, 100000); // depois do último gol: direto para o fim
+      else if (steps < w[0]) fastForward(w[0], 12000);
+      else if (!paused) {
+        acc += real * speed;
+        let n = 0;
+        while (acc >= STEP && n < 40 && !match.finished) { match.update(STEP); steps++; acc -= STEP; n++; }
+        if (n === 40) acc = 0;
+        if (steps >= w[1]) hl.i++;
+      }
+      $('vHl').textContent = w ? '⚽ Melhores momentos · lance ' + (hl.i + 1) + ' de ' + hl.wins.length : '⚽ Fim dos melhores momentos';
     } else if (!paused) {
       acc += real * speed;
       let n = 0;
@@ -1414,17 +1994,25 @@
     try { applyPlayback((await api('POST', '/api/match/control', { id: rec.id, action, value })).playback); } catch (e) { fail(e); }
   }
   $('vPlay').onclick = () => {
-    if (pb) return control(pb.paused ? 'play' : 'pause');
+    if (pb && !pb.broadcast) return control(pb.paused ? 'play' : 'pause');
+    detach();
     paused = !paused; paintControls();
   };
   $('vSpeed').onclick = e => {
     const b = e.target.closest('button');
     if (!b) return;
-    if (pb) return control('speed', +b.dataset.v);
+    if (pb && !pb.broadcast) return control('speed', +b.dataset.v);
+    detach();
     speed = +b.dataset.v; paintControls();
   };
+  $('vReport').onclick = async () => {
+    if (pendingReport) return openReport(pendingReport);
+    try { openReport((await api('GET', '/api/report?match=' + encodeURIComponent(rec.id))).message); }
+    catch (e) { toast(e.status === 404 ? '📋 O relatório sai quando o jogo termina.' : esc(e.message), { err: e.status !== 404 }); }
+  };
   $('vSkip').onclick = () => {
-    if (pb) return control('skip');
+    if (pb && !pb.broadcast) return control('skip');
+    detach(); hl = null; $('vHl').hidden = true;
     let n = 0;
     quiet = true;
     while (!match.finished && n < 100000) { match.update(STEP); n++; }
@@ -1444,6 +2032,8 @@
     if (S.tab === 'clubs') loadClubs();
     if (S.tab === 'matches') loadMatches();
     if (S.tab === 'facil') renderFacil(); // prêmio e bilheteria mudam o saldo
+    hl = null;
+    if (pendingReport) { const m = pendingReport; pendingReport = null; openReport(m); } // relatório que chegou durante o jogo
   };
   $('pitch').onclick = e => {
     const r = e.currentTarget.getBoundingClientRect();
@@ -1655,8 +2245,9 @@
     play = { two };
     held.clear();
     match.on(bigMoment);
-    paused = false; speed = 1; acc = 0; steps = 0; countdownOn = false; pb = null;
+    paused = false; speed = 1; acc = 0; steps = 0; countdownOn = false; pb = null; hl = null;
     $('vFeed').innerHTML = ''; $('vChat').innerHTML = ''; $('vFloat').innerHTML = '';
+    $('vReport').hidden = true; $('vHl').hidden = true;
     startNarration();
     $('vSync').hidden = true; $('vChatBox').hidden = true;
     $('vHelp').hidden = false; $('vSkip').hidden = true;
@@ -1717,5 +2308,5 @@
     }
   })();
 
-  window.fm = { S, api, openMatch, get match() { return match; }, get play() { return play; }, get steps() { return steps; }, get pb() { return pb; } };
+  window.fm = { S, api, openMatch, showTab, openReport, get match() { return match; }, get play() { return play; }, get steps() { return steps; }, get pb() { return pb; } };
 })();

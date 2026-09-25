@@ -29,12 +29,13 @@ const clubRow = c => ({
   id: c.id, name: c.name, manager: c.manager, color: c.color, budget: c.budget, formation: c.formation, coach: c.coach || null,
   lineup: c.lineup, tactic: c.tactic || 'balanced', plan: c.plan || [], points: c.points, played: c.played, w: c.w, d: c.d, l: c.l, gf: c.gf, ga: c.ga,
   pass_hash: c.passHash || null, google_sub: c.google ? c.google.sub : null, google_email: c.google ? c.google.email || null : null,
-  google_name: c.google ? c.google.name || null : null, sessions: c.sessions || [], facilities: c.facilities || {}, created_at: iso(c.createdAt)
+  google_name: c.google ? c.google.name || null : null, sessions: c.sessions || [], facilities: c.facilities || {}, extra: c.extra || {}, created_at: iso(c.createdAt)
 });
 const clubFrom = r => ({
   id: r.id, sessions: r.sessions, passHash: r.pass_hash, google: r.google_sub ? { sub: r.google_sub, email: r.google_email, name: r.google_name } : null,
   name: r.name, manager: r.manager, color: r.color, budget: Number(r.budget), squad: [], coach: r.coach, formation: r.formation, lineup: r.lineup,
-  tactic: r.tactic, plan: r.plan, points: r.points, played: r.played, w: r.w, d: r.d, l: r.l, gf: r.gf, ga: r.ga, facilities: r.facilities || {}, createdAt: ms(r.created_at)
+  tactic: r.tactic, plan: r.plan, points: r.points, played: r.played, w: r.w, d: r.d, l: r.l, gf: r.gf, ga: r.ga, facilities: r.facilities || {},
+  extra: r.extra || {}, createdAt: ms(r.created_at)
 });
 
 const matchRow = m => ({
@@ -52,13 +53,14 @@ const matchFrom = r => ({
 
 const leagueRow = l => ({
   id: l.id, code: l.code, name: l.name, format: l.format, rounds: l.rounds, owner_id: l.owner || null, status: l.status,
-  advancing: l.advancing || [], champion_id: l.champion || null, runner_up_id: l.runnerUp || null, chat: l.chat || [], created_at: iso(l.createdAt)
+  advancing: l.advancing || [], champion_id: l.champion || null, runner_up_id: l.runnerUp || null, chat: l.chat || [], extra: l.extra || {}, created_at: iso(l.createdAt)
 });
 const fixtureRow = (l, f, i) => ({
   id: f.id, league_id: l.id, position: i, round: f.round, stage: f.stage, home_id: f.home, away_id: f.away, match_id: f.matchId || null,
-  score: f.score || null, pens: f.pens || null, winner_id: f.winner || null, goals: f.goals || []
+  score: f.score || null, pens: f.pens || null, winner_id: f.winner || null, goals: f.goals || [], kickoff_at: f.at ? iso(f.at) : null, extra: f.extra || {}
 });
-const fixtureFrom = r => ({ id: r.id, round: r.round, stage: r.stage, home: r.home_id, away: r.away_id, matchId: r.match_id, score: r.score, pens: r.pens, winner: r.winner_id, goals: r.goals });
+const fixtureFrom = r => ({ id: r.id, round: r.round, stage: r.stage, home: r.home_id, away: r.away_id, matchId: r.match_id, score: r.score, pens: r.pens, winner: r.winner_id, goals: r.goals,
+  at: r.kickoff_at ? ms(r.kickoff_at) : null, extra: r.extra || {} });
 
 const tradeRow = t => ({
   id: t.id, from_club_id: t.from, to_club_id: t.to, give: t.give, get_items: t.get, cash: t.cash, status: t.status, why: t.why || null, created_at: iso(t.at)
@@ -112,7 +114,7 @@ function createStore() {
 
   function leagueFrom(r) {
     return { id: r.id, code: r.code, name: r.name, format: r.format, rounds: r.rounds, owner: r.owner_id, status: r.status, advancing: r.advancing,
-      champion: r.champion_id, runnerUp: r.runner_up_id, chat: r.chat, createdAt: ms(r.created_at) };
+      champion: r.champion_id, runnerUp: r.runner_up_id, chat: r.chat, extra: r.extra || {}, createdAt: ms(r.created_at) };
   }
 
   /** Linhas atuais por tabela: Map(id -> { row, json }). Filhos (elenco, membros) são gravados em bloco por pai. */
@@ -234,7 +236,31 @@ function createStore() {
     trainChain = trainChain.then(() => upsert('player_training', data)).catch(e => console.error('[supabase] player_training:', e.message));
   }
 
-  return { sb, load, loadForm, saveForm, loadStats, saveStats, loadTraining, saveTraining, attach, save, flushNow, loadImported, saveImported, upsert, rows: { clubRow, matchRow, leagueRow, fixtureRow, tradeRow } };
+  /* ---------- caixa de entrada (inbox.js) ---------- */
+  let msgChain = Promise.resolve(); // em fila, como o treino: a versão mais nova de uma mensagem nunca é sobrescrita por uma antiga
+  const queue = (what, fn) => { msgChain = msgChain.then(fn).catch(e => console.error('[supabase] ' + what + ':', e.message)); };
+  async function loadMessages(since) { return all('messages', q => q.gte('created_at', iso(since)).order('created_at')); }
+  function saveMessage(clubId, m) {
+    const row = { id: m.id, club_id: clubId, kind: m.kind, data: m.data, created_at: iso(m.at), read_at: m.read ? new Date().toISOString() : null };
+    queue('messages', () => upsert('messages', [row]));
+  }
+  function deleteMessages(ids) { if (ids.length) queue('messages', () => delIn('messages', 'id', ids)); }
+  function pruneMessages(before) { queue('messages', async () => ok('messages', await sb.from('messages').delete().lt('created_at', iso(before)))); }
+
+  /* ---------- notificações no celular (push.js) e chaves do servidor ---------- */
+  async function loadPushSubs() { return all('push_subs', q => q.order('created_at')); }
+  function savePushSub(clubId, endpoint, keys) { queue('push_subs', () => upsert('push_subs', [{ endpoint, club_id: clubId, keys, created_at: new Date().toISOString() }])); }
+  function deletePushSub(endpoint) { queue('push_subs', () => delIn('push_subs', 'endpoint', [endpoint])); }
+  async function getKv(key) { const rows = ok('app_kv', await sb.from('app_kv').select('*').eq('key', key)); return rows && rows[0] ? rows[0].value : null; }
+  async function setKv(key, value) { ok('app_kv', await sb.from('app_kv').upsert({ key, value, updated_at: new Date().toISOString() })); }
+
+  async function flushAll() { await flushNow(); await msgChain; }
+
+  return {
+    sb, load, loadForm, saveForm, loadStats, saveStats, loadTraining, saveTraining, attach, save, flushNow: flushAll, loadImported, saveImported, upsert,
+    loadMessages, saveMessage, deleteMessages, pruneMessages, loadPushSubs, savePushSub, deletePushSub, getKv, setKv,
+    rows: { clubRow, matchRow, leagueRow, fixtureRow, tradeRow }
+  };
 }
 
 module.exports = { createStore };
